@@ -1,0 +1,70 @@
+import pandas
+from Bio.SeqIO import parse
+import os
+
+FILES1 = glob_wildcards( 'data/hmms-enabled/{hmm}.hmm' )
+FILES2 = glob_wildcards( 'data/genomes-enabled/{fasta}.fna' )
+
+# extract the {hmm} values into a list
+HMMS    = FILES1.hmm
+GENOMES = FILES2.fasta
+
+# borrowed from CheckV
+def parse_hmmsearch( path ) :
+  with open(path) as f:
+    names = [ "qname", "qacc", "tname", "tacc",   "eval", 
+              "score", "bias", "beval", "bscore", "bbias" ]
+    formats = [ str,   str,   str,   str,   float, 
+                float, float, float, float, float ]
+    for line in f:
+      if not line.startswith("#") :
+        values = line.split()
+        yield dict( [ ( names[i], formats[i](values[i]) ) 
+                      for i in range(10) ] )
+
+rule all :
+  input :
+    # use the extracted name values to build new filenames
+    expand( 'proteins/{fasta}_genes.faa',
+            fasta=GENOMES ),
+    expand( 'hmm_hits/{fasta}_{hmm}_prot.txt',
+            hmm=HMMS, fasta=GENOMES ),
+    expand( 'prealignments/{hmm}.faa',
+            hmm=HMMS, fasta=GENOMES ),
+
+rule prodigal:
+  input :
+    fna='data/genomes-enabled/{fasta}.fna', 
+  output :
+    faa='proteins/{fasta}_genes.faa',
+    #fna='proteins/{fasta}_genes.fna',
+    #gff='proteins/{fasta}_genes.gff',
+  log :
+    'logs/prodigal/{fasta}.log',
+  params :
+    extra='',  # Additional arguments
+  wrapper :
+    'file://wrappers/prodigal-gv'
+
+rule hmmer :
+  input :
+    fasta   = 'proteins/{fasta}_genes.faa',
+    profile = 'data/hmms-enabled/{hmm}.hmm'
+  log :
+    'logs/hmmer/{fasta}_{hmm}.log',
+  output :
+    tblout         = 'hmm_hits/{fasta}_{hmm}_prot_tbl.txt',
+    domtblout      = 'hmm_hits/{fasta}_{hmm}_prot_dom_tbl.txt',
+    alignment_hits = 'hmm_hits/{fasta}_{hmm}_alg_hits.txt',
+    outfile        = 'hmm_hits/{fasta}_{hmm}_prot.txt'
+  wrapper :
+    'file://wrappers/hmmer/hmmsearch'
+
+rule scoring :
+  input :
+    hits = 'hmm_hits/{fasta}_{hmm}_prot.txt',
+    faa  = 'proteins/{fasta}_genes.faa'
+  output :
+    prealign = 'prealignments/{hmm}.faa'
+  run :
+    print( '{hits} :: {faa}'.format( hits=input.hits, faa=input.faa ) )

@@ -1,0 +1,11 @@
+rule prodigal:
+    input:
+        alignment="{sample}.fna",  # Input genome file
+    output:
+        tree="{sample}.faa",  # Output proteins file
+    log:
+        "logs/prodigal/{sample}.log",
+    params:
+        extra="",  # Additional arguments
+    wrapper:
+        "master/bio/prodigal-gv"

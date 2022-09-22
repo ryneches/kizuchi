@@ -1,0 +1,12 @@
+name: prodigal-gv
+description: call genes with prodigal-gv. Documentation found at https://github.com/apcamargo/prodigal-gv
+authors:
+  - Russell Neches
+input:
+  - FASTA file of nucleic acid bases.
+output:
+  - FASTA file of amino acid bases for predicted proteins.
+  - FASTA file of nucleic acid bases for predicted genes.
+  - GFF of open reading frames.
+notes: |
+  - This is a fork of the original prodigal code with ten additional models in metagenome mode.
