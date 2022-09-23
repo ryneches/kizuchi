@@ -25,12 +25,16 @@ def parse_hmmsearch( path ) :
 rule all :
   input :
     # use the extracted name values to build new filenames
-    expand( 'proteins/{fasta}_genes.faa',
-            fasta=GENOMES ),
-    expand( 'hmm_hits/{fasta}_{hmm}_prot.txt',
-            hmm=HMMS, fasta=GENOMES ),
+    #expand( 'proteins/{fasta}_genes.faa',
+    #        fasta=GENOMES ),
+    #expand( 'hmm_hits/{fasta}_{hmm}_prot.txt',
+    #        hmm=HMMS, fasta=GENOMES ),
     expand( 'prealignments/{hmm}.faa',
             hmm=HMMS, fasta=GENOMES ),
+
+rule clean :
+  shell :
+    'rm -rf proteins hmm_hits logs'
 
 rule prodigal:
   input :
@@ -62,9 +66,12 @@ rule hmmer :
 
 rule scoring :
   input :
-    hits = 'hmm_hits/{fasta}_{hmm}_prot.txt',
-    faa  = 'proteins/{fasta}_genes.faa'
+    hits = expand( 'hmm_hits/{fasta}_{{hmm}}_prot.txt',
+                   fasta=GENOMES ),
+    faa  = expand( 'proteins/{fasta}_genes.faa',
+                   fasta=GENOMES )
   output :
     prealign = 'prealignments/{hmm}.faa'
   run :
     print( '{hits} :: {faa}'.format( hits=input.hits, faa=input.faa ) )
+
