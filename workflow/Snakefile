@@ -31,12 +31,14 @@ rule all :
     #        hmm=HMMS, fasta=GENOMES ),
     #expand( 'prealignments/{hmm}.faa',
     #        hmm=HMMS ),
-    expand( 'alignments/{hmm}.msa.faa',
+    #expand( 'alignments/{hmm}.msa.faa',
+    #        hmm=HMMS )
+    expand( 'trees/{hmm}.nwk',
             hmm=HMMS )
 
 rule clean :
   shell :
-    'rm -rf proteins hmm_hits prealignments logs'
+    'rm -rf proteins hmm_hits prealignments alignments trees logs'
 
 rule prodigal:
   input :
@@ -95,14 +97,26 @@ rule scoring :
         f.write( '' )
 
 rule clustalo :
-    input :
-        'prealignments/{hmm}.faa'
-    output :
-        'alignments/{hmm}.msa.faa'
-    params:
-        extra=''
-    log :
-        'logs/clustalo/{hmm}.log'
-    threads : 8
-    wrapper :
-      'file://wrappers/clustalo'
+  input :
+    'prealignments/{hmm}.faa'
+  output :
+    'alignments/{hmm}.msa.faa'
+  params:
+    extra=''
+  log :
+    'logs/clustalo/{hmm}.log'
+  threads : 8
+  wrapper :
+    'file://wrappers/clustalo'
+
+rule fasttree :
+  input :
+    alignment='alignments/{hmm}.msa.faa'
+  output :
+    tree='trees/{hmm}.nwk'
+  log :
+    'logs/fasttree/{hmm}.log'
+  params :
+    extra=''
+  wrapper :
+    'file://wrappers/fasttree'
