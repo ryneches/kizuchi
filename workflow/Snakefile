@@ -29,8 +29,10 @@ rule all :
     #        fasta=GENOMES ),
     #expand( 'hmm_hits/{fasta}_{hmm}_prot.txt',
     #        hmm=HMMS, fasta=GENOMES ),
-    expand( 'prealignments/{hmm}.faa',
-            hmm=HMMS, fasta=GENOMES ),
+    #expand( 'prealignments/{hmm}.faa',
+    #        hmm=HMMS ),
+    expand( 'alignments/{hmm}.msa.faa',
+            hmm=HMMS )
 
 rule clean :
   shell :
@@ -92,4 +94,15 @@ rule scoring :
       with open( output.prealign, 'w' ) as f :
         f.write( '' )
 
-
+rule clustalo :
+    input :
+        'prealignments/{hmm}.faa'
+    output :
+        'alignments/{hmm}.msa.faa'
+    params:
+        extra=''
+    log :
+        'logs/clustalo/{hmm}.log'
+    threads : 8
+    wrapper :
+      'file://wrappers/clustalo'
