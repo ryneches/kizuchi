@@ -34,7 +34,7 @@ rule all :
 
 rule clean :
   shell :
-    'rm -rf proteins hmm_hits logs'
+    'rm -rf proteins hmm_hits prealignments logs'
 
 rule prodigal:
   input :
@@ -66,12 +66,30 @@ rule hmmer :
 
 rule scoring :
   input :
-    hits = expand( 'hmm_hits/{fasta}_{{hmm}}_prot.txt',
+    # for each HMM...
+    hits = expand( 'hmm_hits/{fasta}_{{hmm}}_prot_tbl.txt',
                    fasta=GENOMES ),
+    # ...score orthologs for each genome
     faa  = expand( 'proteins/{fasta}_genes.faa',
                    fasta=GENOMES )
   output :
     prealign = 'prealignments/{hmm}.faa'
   run :
-    print( '{hits} :: {faa}'.format( hits=input.hits, faa=input.faa ) )
+    nohits = 0
+    for tblout,faa in zip( input.hits, input.faa ) :
+      hits = pandas.DataFrame( [ h for h in parse_hmmsearch( tblout ) ] )
+      if hits.shape[0] == 0 :
+        nohits += 1
+        continue
+      top_hit = hits.sort_values( 'bscore', ascending=False ).iloc[0]
+      with open( output.prealign, 'a' ) as f :
+        for rec in parse( open( faa ), 'fasta' ) :
+          if rec.id == top_hit['qname'] : 
+            f.write( rec.format( 'fasta' ) )
+            break
+    if nohits == len( input.hits ) :
+      print( 'writing empty file for {a}...'.format( a=output.prealign ) )
+      with open( output.prealign, 'w' ) as f :
+        f.write( '' )
+
 
