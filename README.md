@@ -1,7 +1,8 @@
 # 木槌 : kizuchi
 
-<img src='docs/tap-appear-mallet.jpeg' width='100' /> A `snakemake` workflow
-for building gene trees from HMM profiles.
+<img src='docs/tap-appear-mallet.jpeg' width='100' />
+
+A `snakemake` workflow for building gene trees from HMM profiles.
 
 ---
 
