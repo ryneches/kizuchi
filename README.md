@@ -1,7 +1,6 @@
-# 木槌
-## kizuchi
+# 木槌 : kizuchi
 
-![打出の小槌](docs/tap-appear-mallet.jpeg | width=100) A `snakemake` workflow
+<img src='docs/tap-appear-mallet.jpeg' width='100' /> A `snakemake` workflow
 for building gene trees from HMM profiles.
 
 ---
