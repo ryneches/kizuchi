@@ -7,7 +7,10 @@ A `snakemake` workflow for building gene trees from HMM profiles.
 ---
 
 `kizuchi` is a [`snakemake`](https://snakemake.readthedocs.io/en/stable/)
-workflow for building phylogenetic trees from 
+workflow for building phylogenetic trees, starting from a collection of genomes
+and HMM profiles, producing necessary diagnostics along the way in the form of
+a Jupyter notebook. The aim of this workflow is to automate and document the
+tree generating procedures for phylogenetic analysis in a reproducible way.
 
 - gene prediction using [`prodigal-gv`](https://github.com/apcamargo/prodigal-gv)
 - gene annotation using [`hmmer`](http://hmmer.org/)
