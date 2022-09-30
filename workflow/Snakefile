@@ -24,23 +24,29 @@ def parse_hmmsearch( path ) :
 
 rule all :
   input :
-    # use the extracted name values to build new filenames
-    #expand( 'proteins/{fasta}_genes.faa',
-    #        fasta=GENOMES ),
-    #expand( 'hmm_hits/{fasta}_{hmm}_prot.txt',
-    #        hmm=HMMS, fasta=GENOMES ),
-    #expand( 'prealignments/{hmm}.faa',
-    #        hmm=HMMS ),
-    #expand( 'alignments/{hmm}.msa.faa',
-    #        hmm=HMMS )
-    expand( 'trees/{hmm}.nwk',
-            hmm=HMMS )
+    expand( 'trees/{hmm}.nwk', hmm=HMMS ),
+    'statistics/summary.txt'
 
 rule clean :
   shell :
-    'rm -rf proteins hmm_hits prealignments alignments trees logs'
+    'rm -rf proteins hmm_hits prealignments alignments trees statistics logs'
 
-rule prodigal:
+rule statistics :
+  input :
+    hmms       = expand( 'data/hmms-enabled/{hmm}.hmm', hmm=HMMS ),
+    genomes    = expand( 'data/genomes-enabled/{fasta}.fna', fasta=GENOMES ),
+    proteins   = expand( 'proteins/{fasta}_genes.faa', fasta=GENOMES ),
+    hits       = expand( 'hmm_hits/{fasta}_{hmm}_prot_tbl.txt', hmm=HMMS, fasta=GENOMES ),
+    alignments = expand( 'alignments/{hmm}.msa.faa', hmm=HMMS ),
+    trees      = expand( 'trees/{hmm}.nwk', hmm=HMMS )
+  output :
+    'statistics/summary.txt'
+  log :
+    notebook='logs/notebooks/statistics.ipynb',
+  notebook :
+    'notebooks/statistics.ipynb'
+
+rule prodigal :
   input :
     fna='data/genomes-enabled/{fasta}.fna', 
   output :
@@ -62,9 +68,9 @@ rule hmmer :
     'logs/hmmer/{fasta}_{hmm}.log',
   output :
     tblout         = 'hmm_hits/{fasta}_{hmm}_prot_tbl.txt',
-    domtblout      = 'hmm_hits/{fasta}_{hmm}_prot_dom_tbl.txt',
-    alignment_hits = 'hmm_hits/{fasta}_{hmm}_alg_hits.txt',
-    outfile        = 'hmm_hits/{fasta}_{hmm}_prot.txt'
+    #domtblout      = 'hmm_hits/{fasta}_{hmm}_prot_dom_tbl.txt',
+    #alignment_hits = 'hmm_hits/{fasta}_{hmm}_alg_hits.txt',
+    #outfile        = 'hmm_hits/{fasta}_{hmm}_prot.txt'
   wrapper :
     'file://wrappers/hmmer/hmmsearch'
 
