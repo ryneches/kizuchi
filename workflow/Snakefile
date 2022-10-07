@@ -1,6 +1,5 @@
-import pandas
+import os, pandas, dendropy
 from Bio.SeqIO import parse
-import os
 
 FILES1 = glob_wildcards( 'data/hmms-enabled/{hmm}.hmm' )
 FILES2 = glob_wildcards( 'data/genomes-enabled/{fasta}.fna' )
@@ -24,7 +23,7 @@ def parse_hmmsearch( path ) :
 
 rule all :
   input :
-    expand( 'trees/{hmm}.nwk', hmm=HMMS ),
+    expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
     'statistics/summary.txt'
 
 rule clean :
@@ -38,7 +37,7 @@ rule statistics :
     proteins   = expand( 'proteins/{fasta}_genes.faa', fasta=GENOMES ),
     hits       = expand( 'hmm_hits/{fasta}_{hmm}_prot_tbl.txt', hmm=HMMS, fasta=GENOMES ),
     alignments = expand( 'alignments/{hmm}.msa.faa', hmm=HMMS ),
-    trees      = expand( 'trees/{hmm}.nwk', hmm=HMMS )
+    trees      = expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS )
   output :
     'statistics/summary.txt'
   log :
@@ -119,10 +118,29 @@ rule fasttree :
   input :
     alignment='alignments/{hmm}.msa.faa'
   output :
-    tree='trees/{hmm}.nwk'
+    tree='trees/by_gene/{hmm}.nwk'
   log :
     'logs/fasttree/{hmm}.log'
   params :
     extra=''
   wrapper :
     'file://wrappers/fasttree'
+
+rule taxatrees :
+  input :
+    'trees/by_gene/{hmm}.nwk',
+  output :
+    'trees/by_taxa/{hmm}.nwk',
+  log :
+    'logs/gene-taxa/{hmm}_mapping.txt',
+  run :
+    if not os.path.getsize( input[0] ) == 0 :
+      T = dendropy.Tree.get( path=input[0],
+                             schema='newick',
+                             preserve_underscores=True )
+      for leaf in T.leaf_nodes() :
+        leaf.taxon.label = leaf.taxon.label.rsplit('|', 1)[0]
+      T.write( path=output[0],
+               schema='newick' )
+    else :
+      open( output[0], 'w' ).close()
