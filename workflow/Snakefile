@@ -134,13 +134,16 @@ rule taxatrees :
   log :
     'logs/gene-taxa/{hmm}_mapping.txt',
   run :
-    if not os.path.getsize( input[0] ) == 0 :
-      T = dendropy.Tree.get( path=input[0],
-                             schema='newick',
-                             preserve_underscores=True )
-      for leaf in T.leaf_nodes() :
-        leaf.taxon.label = leaf.taxon.label.rsplit('|', 1)[0]
-      T.write( path=output[0],
-               schema='newick' )
-    else :
-      open( output[0], 'w' ).close()
+    with open( log[0], 'w' ) as f :
+      if not os.path.getsize( input[0] ) == 0 :
+        T = dendropy.Tree.get( path=input[0],
+                               schema='newick',
+                               preserve_underscores=True )
+        for leaf in T.leaf_nodes() :
+          taxon = leaf.taxon.label.rsplit('|', 1)[0]
+          f.write( '{a}\t{b}\n'.format( a=leaf.taxon.label, b=taxon ) )
+          leaf.taxon.label = taxon
+        T.write( path=output[0],
+                 schema='newick' )
+      else :
+        open( output[0], 'w' ).close()
