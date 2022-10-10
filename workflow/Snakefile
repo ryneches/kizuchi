@@ -140,7 +140,7 @@ rule taxatrees :
                                schema='newick',
                                preserve_underscores=True )
         for leaf in T.leaf_nodes() :
-          taxon = leaf.taxon.label.rsplit('|', 1)[0]
+          taxon = leaf.taxon.label.rsplit('|', 1)[0].rsplit('_', 2)[0]
           f.write( '{a}\t{b}\n'.format( a=leaf.taxon.label, b=taxon ) )
           leaf.taxon.label = taxon
         T.write( path=output[0],
