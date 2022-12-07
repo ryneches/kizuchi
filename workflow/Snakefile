@@ -93,8 +93,11 @@ rule scoring :
       top_hit = hits.sort_values( 'bscore', ascending=False ).iloc[0]
       with open( output.prealign, 'a' ) as f :
         for rec in parse( open( faa ), 'fasta' ) :
-          if rec.id == top_hit['qname'] : 
-            f.write( rec.format( 'fasta' ) )
+          if rec.id == top_hit['qname'] :
+            if rec.seq[-1] == '*' : # don't include the stop codon
+              f.write( rec[:-1].format( 'fasta' ) )
+            else :
+              f.write( rec.format( 'fasta' ) )
             break
     if nohits == len( input.hits ) :
       print( 'writing empty file for {a}...'.format( a=output.prealign ) )
