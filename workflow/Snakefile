@@ -145,16 +145,25 @@ rule filter_alignments :
   log :
     'logs/filter_alignments/{hmm}.log'
   run :
-    A = AlignIO.read( input[0], 'fasta' )
-    L = A.get_alignment_length()
-    B = MultipleSeqAlignment( [ s for s in A if len(s.seq.ungap())/L > AFT ] )
-    with open( log[0], 'w' ) as f :
-      f.write( 'aligned fraction threshold : {n}\n'.format( n=AFT ) )
-      f.write( 'alignment length           : {n}\n'.format( n=L ) )
-      f.write( 'input alignment sequences  : {n}\n'.format( n=len(A) ) )
-      f.write( 'output alignment sequences : {n}\n'.format( n=len(B) ) )
-    with open( output[0], 'w' ) as f :
-      AlignIO.write( B, f, 'fasta' )
+    if open( input[0] ).read().count( '>' ) < 3 :
+      with open( log[0], 'w' ) as f :
+        f.write( 'no records.' )
+      with open( output[0], 'w' ) as f :
+        f.write( '' )
+    else :
+      A = AlignIO.read( input[0], 'fasta' )
+      L = A.get_alignment_length()
+      B = MultipleSeqAlignment( [ s for s in A if len(s.seq.ungap())/L > AFT ] )
+      with open( log[0], 'w' ) as f :
+        f.write( 'aligned fraction threshold : {n}\n'.format( n=AFT ) )
+        f.write( 'alignment length           : {n}\n'.format( n=L ) )
+        f.write( 'input alignment sequences  : {n}\n'.format( n=len(A) ) )
+        f.write( 'output alignment sequences : {n}\n'.format( n=len(B) ) )
+      with open( output[0], 'w' ) as f :
+        if len(B) >= 3 :
+          AlignIO.write( B, f, 'fasta' )
+        else :
+          f.write( '' )
 
 rule fasttree :
   input :
