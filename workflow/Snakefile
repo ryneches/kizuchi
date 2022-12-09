@@ -1,5 +1,7 @@
 import os, pandas, dendropy
 from Bio.SeqIO import parse
+from Bio import AlignIO
+from Bio.Align import MultipleSeqAlignment
 
 FILES1 = glob_wildcards( 'data/hmms-enabled/{hmm}.hmm' )
 FILES2 = glob_wildcards( 'data/genomes-enabled/{fasta}.fna' )
@@ -7,6 +9,9 @@ FILES2 = glob_wildcards( 'data/genomes-enabled/{fasta}.fna' )
 # extract the {hmm} values into a list
 HMMS    = FILES1.hmm
 GENOMES = FILES2.fasta
+
+# post-trimming aligned fraction threshold
+AFT = 0.75
 
 # borrowed from CheckV
 def parse_hmmsearch( path ) :
@@ -28,7 +33,10 @@ rule all :
 
 rule clean :
   shell :
-    'rm -rf proteins hmm_hits prealignments alignments trees statistics logs'
+    'rm -rf proteins hmm_hits prealignments\
+        alignments trimmed_alignments\
+        filtered_trimmed_alignments\
+        trees statistics logs'
 
 rule statistics :
   input :
@@ -36,7 +44,7 @@ rule statistics :
     genomes    = expand( 'data/genomes-enabled/{fasta}.fna', fasta=GENOMES ),
     proteins   = expand( 'proteins/{fasta}_genes.faa', fasta=GENOMES ),
     hits       = expand( 'hmm_hits/{fasta}_{hmm}_prot_tbl.txt', hmm=HMMS, fasta=GENOMES ),
-    alignments = expand( 'alignments/{hmm}.msa.faa', hmm=HMMS ),
+    alignments = expand( 'trimmed_alignments/{hmm}.msa.faa', hmm=HMMS ),
     trees      = expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS )
   output :
     'statistics/summary.txt'
@@ -117,9 +125,40 @@ rule clustalo :
   wrapper :
     'file://wrappers/clustalo'
 
+rule trimal :
+  input :
+    'alignments/{hmm}.msa.faa'
+  output :
+    'trimmed_alignments/{hmm}.msa.faa'
+  log :
+    'logs/trimal/{hmm}.log'
+  params :
+    extra='-automated1'
+  wrapper :
+    'file://wrappers/trimal'
+
+rule filter_alignments :
+  input :
+    'trimmed_alignments/{hmm}.msa.faa'
+  output :
+    'filtered_trimmed_alignments/{hmm}.msa.faa'
+  log :
+    'logs/filter_alignments/{hmm}.log'
+  run :
+    A = AlignIO.read( input[0], 'fasta' )
+    L = A.get_alignment_length()
+    B = MultipleSeqAlignment( [ s for s in A if len(s.seq.ungap())/L > AFT ] )
+    with open( log[0], 'w' ) as f :
+      f.write( 'aligned fraction threshold : {n}\n'.format( n=AFT ) )
+      f.write( 'alignment length           : {n}\n'.format( n=L ) )
+      f.write( 'input alignment sequences  : {n}\n'.format( n=len(A) ) )
+      f.write( 'output alignment sequences : {n}\n'.format( n=len(B) ) )
+    with open( output[0], 'w' ) as f :
+      AlignIO.write( B, f, 'fasta' )
+
 rule fasttree :
   input :
-    alignment='alignments/{hmm}.msa.faa'
+    alignment='filtered_trimmed_alignments/{hmm}.msa.faa'
   output :
     tree='trees/by_gene/{hmm}.nwk'
   log :

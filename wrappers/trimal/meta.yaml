@@ -1,0 +1,8 @@
+name: trimal
+description: trim alignments with trimal. https://vicfero.github.io/trimal/
+authors:
+  - Russell Neches
+input:
+  - Alignment FASTA or interleaved phylip file
+output:
+  - Trimmed alignment file
