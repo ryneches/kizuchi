@@ -1,6 +1,6 @@
 import os, pandas, dendropy
 from pathlib import Path
-from hmm_profile reader, writer
+from hmm_profile import reader, writer
 from Bio.SeqIO import parse
 from Bio import AlignIO
 from Bio.Align import MultipleSeqAlignment
@@ -109,12 +109,12 @@ rule scoring :
     faa     = expand( 'proteins/{fasta}_genes.faa', fasta=GENOMES ),
     profile = 'hmmdb/models.hmm'
   output :
-    prealign = 'prealignments/{hmm}.faa'
+    prealign = expand( 'prealignments/{hmm}.faa', hmm=HMMS )
   log :
     'scoring/scoring.log'
   run :
     with open( log[0], 'w' ) as LOG :
-      prealignments = { Path(p).stem : { 'prealign' : p
+      prealignments = { Path(p).stem : { 'prealign' : p,
                                          'hits'     : [] } for p in output.prealign }
       # use trusted cutoffs if provided
       trusted_cuttoffs = { m.metadata.model_name : m.metadata.trusted_cutoff
@@ -134,12 +134,12 @@ rule scoring :
         for hmm in set( hits['qname'] ) :
           if trusted_cutoff[ hmm ] :
             top_hits = hits[ ( hits['qname'] == hmm ) &
-                             ( hits['score'] >= trusted_cutoff[hmm] ) ]
-                           .sort_by( 'score', axis=0, ascending=False )
+                             ( hits['score'] >= trusted_cutoff[hmm] ) ].sort_by( 
+                                'score', axis=0, ascending=False )
           else :
             top_hits = hits[ ( hits['qname'] == hmm ) &
-                             ( hits['eval']  <= EVALUE ) ]
-                           .sort_by( 'score', axis=0, ascending=False )
+                             ( hits['eval']  <= EVALUE ) ].sort_by( 
+                                'score', axis=0, ascending=False )
           if len( top_hits ) == 0 : continue
           with open( prealignments[ hmm ]['prealign'], 'a' ) as f :
             for n,row in top_hits.iterrows() :
