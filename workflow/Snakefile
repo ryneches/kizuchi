@@ -70,11 +70,11 @@ rule prodigal :
 
 rule hmmdb :
   input :
-    hmms = expand( 'data/hmms-enabled/{hmm}.hmm', hmm=HMMS ),
+    hmms = expand( 'data/hmms-enabled/{hmm}.hmm', hmm=HMMS )
   output :
-    db   = 'hmmdb/models.hmm',
+    db   = 'hmmdb/models.hmm'
   log :
-    'logs/hmmdb/hmmdb.log',
+    'logs/hmmdb/hmmdb.log'
   run :
     profiles = []
     for hmmfile in hmms :
@@ -86,11 +86,11 @@ rule hmmdb :
 rule hmmer :
   input :
     fasta   = 'proteins/{fasta}_genes.faa',
-    profile = 'data/hmms-enabled/{hmm}.hmm'
+    profile = 'hmmdb/models.hmm'
   log :
-    'logs/hmmer/{fasta}_{hmm}.log',
+    'logs/hmmer/{fasta}.log',
   output :
-    tblout         = 'hmm_hits/{fasta}_{hmm}_prot_tbl.txt',
+    tblout         = 'hmm_hits/{fasta}_prot_tbl.txt',
     #domtblout      = 'hmm_hits/{fasta}_{hmm}_prot_dom_tbl.txt',
     #alignment_hits = 'hmm_hits/{fasta}_{hmm}_alg_hits.txt',
     #outfile        = 'hmm_hits/{fasta}_{hmm}_prot.txt'
