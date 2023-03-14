@@ -1,4 +1,5 @@
 import os, pandas, dendropy
+from hmm_profile reader, writer
 from Bio.SeqIO import parse
 from Bio import AlignIO
 from Bio.Align import MultipleSeqAlignment
@@ -66,6 +67,21 @@ rule prodigal :
     extra='',  # Additional arguments
   wrapper :
     'file://wrappers/prodigal-gv'
+
+rule hmmdb :
+  input :
+    hmms = expand( 'data/hmms-enabled/{hmm}.hmm', hmm=HMMS ),
+  output :
+    db   = 'hmmdb/models.hmm',
+  log :
+    'logs/hmmdb/hmmdb.log',
+  run :
+    profiles = []
+    for hmmfile in hmms :
+      hmm = reader.read_single( open( hmmfile ) )
+      assert hmmfile == hmm.metadata.model_name
+      profiles.append( hmm ) 
+    writer.save_many_to_file( hmms=profiles, outpath=output.db )
 
 rule hmmer :
   input :
