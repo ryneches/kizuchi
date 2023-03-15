@@ -1,5 +1,6 @@
 import os, pandas, dendropy
 from pathlib import Path
+from copy import deepcopy
 from hmm_profile import reader, writer
 from Bio.SeqIO import parse
 from Bio import AlignIO
@@ -18,10 +19,13 @@ EVALUE = 10e-3
 # post-trimming aligned fraction threshold
 AFT = 0.75
 
+# threads to use when invoking multithreaded applications
+THREADS=2
+
 # borrowed from CheckV
 def parse_hmmsearch( path ) :
   with open(path) as f:
-    names = [ 'qname', 'qacc', 'tname', 'tacc',   'eval', 
+    names = [ 'tname', 'qacc', 'qname', 'tacc',   'eval', 
               'score', 'bias', 'beval', 'bscore', 'bbias' ]
     formats = [ str,   str,   str,   str,   float, 
                 float, float, float, float, float ]
@@ -38,8 +42,9 @@ rule all :
 
 rule clean :
   shell :
-    'rm -rf proteins hmm_hits prealignments\
-        alignments trimmed_alignments\
+    'rm -rf proteins hmm_hits hmmdb \
+        prealignments\ alignments \
+        trimmed_alignments\
         filtered_trimmed_alignments\
         trees statistics logs'
 
@@ -48,7 +53,7 @@ rule statistics :
     hmms       = expand( 'data/hmms-enabled/{hmm}.hmm', hmm=HMMS ),
     genomes    = expand( 'data/genomes-enabled/{fasta}.fna', fasta=GENOMES ),
     proteins   = expand( 'proteins/{fasta}_genes.faa', fasta=GENOMES ),
-    hits       = expand( 'hmm_hits/{fasta}_{hmm}_prot_tbl.txt', hmm=HMMS, fasta=GENOMES ),
+    hits       = expand( 'hmm_hits/{fasta}_prot_tbl.txt', hmm=HMMS, fasta=GENOMES ),
     alignments = expand( 'trimmed_alignments/{hmm}.msa.faa', hmm=HMMS ),
     trees      = expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS )
   output :
@@ -81,11 +86,13 @@ rule hmmdb :
     'logs/hmmdb/hmmdb.log'
   run :
     profiles = []
-    for hmmfile in hmms :
+    for hmmfile in input.hmms :
       hmm = reader.read_single( open( hmmfile ) )
-      assert hmmfile == hmm.metadata.model_name
+      if Path(hmmfile).stem != hmm.metadata.model_name :
+        raise Exception( 'file name ({hmmfile}) must match model name ({modelname}).'.format(
+                          hmmfile=hmmfile, modelname=hmm.metadata.model_name ) )
       profiles.append( hmm ) 
-    writer.save_many_to_file( hmms=profiles, outpath=output.db )
+    writer.save_many_to_file( hmms=profiles, output=output.db )
 
 rule hmmer :
   input :
@@ -111,42 +118,43 @@ rule scoring :
   output :
     prealign = expand( 'prealignments/{hmm}.faa', hmm=HMMS )
   log :
-    'scoring/scoring.log'
+    'logs/scoring/scoring.log'
   run :
     with open( log[0], 'w' ) as LOG :
       prealignments = { Path(p).stem : { 'prealign' : p,
                                          'hits'     : [] } for p in output.prealign }
       # use trusted cutoffs if provided
-      trusted_cuttoffs = { m.metadata.model_name : m.metadata.trusted_cutoff
-                           for m in reader.read_all( open( input.profile ) ) }
+      trusted_cutoffs = { m.metadata.model_name : m.metadata.trusted_cutoff
+                          for m in reader.read_all( open( input.profile ) ) }
       LOG.write( 'parsed {n} hmms, found {m} trusted cutoffs\n'.format( 
                     n=str(len(trusted_cutoffs)),
                     m=str(sum( [ bool(v) for v in trusted_cutoffs.values() ] ) ) ) )
       for tblout,faa in zip( input.hits, input.faa ) :
         hits = pandas.DataFrame( [ h for h in parse_hmmsearch( tblout ) ] )
         seqs = { seq.id : seq for seq in parse( open( faa ), 'fasta' ) }
-        genome = Path(faa).stem.split('_')[0]
+        genome = Path(faa).stem.rsplit('_',1)[0]
         LOG.write( '{genome} : found {n} hits for {m} proteins\n'.format(
                       genome=genome,
                       n=str(len(hits)),
                       m=str(len(seqs)) ) )
         if len( hits ) == 0 : continue
         for hmm in set( hits['qname'] ) :
-          if trusted_cutoff[ hmm ] :
+          if trusted_cutoffs[ hmm ] :
             top_hits = hits[ ( hits['qname'] == hmm ) &
-                             ( hits['score'] >= trusted_cutoff[hmm] ) ].sort_by( 
+                             ( hits['score'] >= trusted_cutoff[hmm] ) ].sort_values( 
                                 'score', axis=0, ascending=False )
           else :
             top_hits = hits[ ( hits['qname'] == hmm ) &
-                             ( hits['eval']  <= EVALUE ) ].sort_by( 
+                             ( hits['eval']  <= EVALUE ) ].sort_values( 
                                 'score', axis=0, ascending=False )
           if len( top_hits ) == 0 : continue
           with open( prealignments[ hmm ]['prealign'], 'a' ) as f :
-            for n,row in top_hits.iterrows() :
-              seq = seqs[ row['tname'] ]
+            for i,(n,row) in enumerate( top_hits.iterrows() ) :
+              LOG.write( '   {hmm} {n} : {tname}\n'.format( hmm=hmm, n=str(i), tname=row['tname'] ) )
+              seq = deepcopy( seqs[ row['tname'] ] )
               if seq.seq[-1] == '*' : seq = seq[:-1]
-              seq.id = seq.id + '_p' + str(n)
-              prealignments['hits'].append( seq.id )
+              seq.id = seq.id + '_p' + str(i)
+              prealignments[hmm]['hits'].append( seq.id )
               f.write( seq.format( 'fasta' ) )
       for k,p in prealignments.items() :
         LOG.write( '{hmm} : \n'.format( hmm=k ) )
@@ -166,7 +174,7 @@ rule clustalo :
     extra=''
   log :
     'logs/clustalo/{hmm}.log'
-  threads : 8
+  threads : THREADS
   wrapper :
     'file://wrappers/clustalo'
 
