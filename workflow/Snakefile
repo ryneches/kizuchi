@@ -231,6 +231,10 @@ rule fasttree :
     'file://wrappers/fasttree'
 
 rule taxatrees :
+  '''
+  Prune trees to individual taxa using. Taxa are represented
+  by the gene with the top-scoring HMM hit.
+  '''
   input :
     'trees/by_gene/{hmm}.nwk',
   output :
@@ -238,14 +242,17 @@ rule taxatrees :
   log :
     'logs/gene-taxa/{hmm}_mapping.txt',
   run :
-    with open( log[0], 'w' ) as f :
+    with open( log[0], 'w' ) as LOG :
       if not os.path.getsize( input[0] ) == 0 :
         T = dendropy.Tree.get( path=input[0],
                                schema='newick',
                                preserve_underscores=True )
+        drop = [ leaf.taxon.label for leaf in T.leaf_nodes() 
+                 if leaf.taxon.label.rsplit('_', 1)[1] != 'p0' ]
+        T.prune_taxa_with_labels( drop )
         for leaf in T.leaf_nodes() :
-          taxon = leaf.taxon.label.rsplit('|', 1)[0].rsplit('_', 2)[0]
-          f.write( '{a}\t{b}\n'.format( a=leaf.taxon.label, b=taxon ) )
+          taxon = leaf.taxon.label.rsplit( '_', 3 )[0]
+          LOG.write( '{a}\t{b}\n'.format( a=leaf.taxon.label, b=taxon ) )
           leaf.taxon.label = taxon
         T.write( path=output[0],
                  schema='newick' )
