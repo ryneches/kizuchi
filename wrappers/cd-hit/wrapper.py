@@ -1,5 +1,5 @@
 __author__    = 'Russell Neches'
-__copyright__ = 'Copyright 2022, Russell Neches'
+__copyright__ = 'Copyright 2023, Russell Neches'
 __email__     = 'russell@vort.org'
 __license__   = 'MIT'
 
@@ -22,9 +22,10 @@ if open( snakemake.input[0] ).read().count( '>' ) < 3 :
 else :
 
     shell(
-        'trimal '
-        ' -in {snakemake.input}'
-        ' -out {snakemake.output}'
+        'cd-hit '
+        ' -i {snakemake.input}'
+        ' -o {snakemake.output}'
+        ' -d 0'
         ' {extra}'
         ' {log}'
     )

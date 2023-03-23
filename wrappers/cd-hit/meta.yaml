@@ -1,0 +1,9 @@
+name: cd-hit
+description: cluster sequences with cd-hit : http://bioinformatics.org/cd-hit/
+authors:
+  - Russell Neches
+input:
+  - FASTA file
+output:
+  - Clusters in .clstr format
+  - FASTA file of representative sequences
