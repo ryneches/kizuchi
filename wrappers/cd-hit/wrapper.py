@@ -24,7 +24,7 @@ else :
     shell(
         'cd-hit '
         ' -i {snakemake.input}'
-        ' -o {snakemake.output}'
+        ' -o {snakemake.output.rep_seqs}'
         ' -d 0'
         ' {extra}'
         ' {log}'
