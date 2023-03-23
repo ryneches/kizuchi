@@ -218,6 +218,19 @@ rule filter_alignments :
         else :
           f.write( '' )
 
+rule precluster :
+  input :
+    'filtered_trimmed_alignments/{hmm}.msa.faa'
+  output :
+    'precluster_sequences/{hmm}.faa'
+  log :
+    'logs/precluster/{hmm}.log'
+  run :
+    with open( output[0], 'w' ) as f :
+      for rec in parse( open( input[0] ), 'fasta' ) :
+        rec.seq = rec.seq.replace( '-', '' )
+        f.write( rec.format( 'fasta' ) )
+
 rule fasttree :
   input :
     alignment='filtered_trimmed_alignments/{hmm}.msa.faa'
