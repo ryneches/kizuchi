@@ -1,0 +1,12 @@
+rule cdhit :
+    input :
+        '{sample}.fa'      # input sequences
+    output:
+        '{sample}.clstr',  # clusters
+        '{sample}.faa'     # representative sequences
+    log:
+        'logs/cd-hit/{sample}.log',
+    params:
+        extra='',  # additional arguments
+    wrapper:
+        'master/bio/cd-hit'

@@ -2,6 +2,7 @@ import os, pandas, dendropy
 from pathlib import Path
 from copy import deepcopy
 from hmm_profile import reader, writer
+from cdhit_reader import read_cdhit
 from Bio.SeqIO import parse
 from Bio import AlignIO
 from Bio.Align import MultipleSeqAlignment
@@ -22,6 +23,9 @@ AFT = 0.75
 # threads to use when invoking multithreaded applications
 THREADS=2
 
+# cutoff thresholds for OTU clustering
+OTU_THRESHOLDS = [ 0.5, 0.6, 0.7, 0.8, 0.9, 0.93, 0.95, 0.98, 0.99 ]
+
 # borrowed from CheckV
 def parse_hmmsearch( path ) :
   with open(path) as f:
@@ -38,6 +42,7 @@ def parse_hmmsearch( path ) :
 rule all :
   input :
     expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
+    expand( 'clusters/{cutoff}/{hmm}.tsv', cutoff=OTU_THRESHOLDS, hmm=HMMS ),
     'statistics/summary.txt'
 
 rule clean :
@@ -217,6 +222,42 @@ rule filter_alignments :
           AlignIO.write( B, f, 'fasta' )
         else :
           f.write( '' )
+
+rule precluster :
+  input :
+    'filtered_trimmed_alignments/{hmm}.msa.faa'
+  output :
+    'precluster_sequences/{hmm}.faa'
+  log :
+    'logs/precluster/{hmm}.log'
+  run :
+    with open( output[0], 'w' ) as f :
+      for rec in parse( open( input[0] ), 'fasta' ) :
+        rec.seq = rec.seq.replace( '-', '' )
+        f.write( rec.format( 'fasta' ) )
+
+rule cluster :
+  input :
+    'precluster_sequences/{hmm}.faa'
+  output :
+    clusters = 'clusters/{cutoff}/{hmm}.faa.clstr',
+    rep_seqs = 'clusters/{cutoff}/{hmm}.faa'
+  log :
+    'logs/cluster/{cutoff}_{hmm}.log'
+  wrapper :
+    'file://wrappers/cd-hit'
+
+rule postcluster :
+  input :
+    'clusters/{cutoff}/{hmm}.faa.clstr'
+  output :
+    'clusters/{cutoff}/{hmm}.tsv'
+  log :
+    'logs/postcluster/{cutoff}_{hmm}.log'
+  run :
+    with open( output[0], 'w' ) as f :
+      for cluster in read_cdhit( input[0] ) :
+        f.write( '\t'.join( [ s.name for s in cluster.sequences ] ) + '\n' )
 
 rule fasttree :
   input :
