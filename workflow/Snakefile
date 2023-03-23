@@ -2,6 +2,7 @@ import os, pandas, dendropy
 from pathlib import Path
 from copy import deepcopy
 from hmm_profile import reader, writer
+from cdhit_reader import read_cdhit
 from Bio.SeqIO import parse
 from Bio import AlignIO
 from Bio.Align import MultipleSeqAlignment
@@ -245,6 +246,17 @@ rule cluster :
   wrapper :
     'file://wrappers/cd-hit'
 
+rule postcluster :
+  input :
+    'clusters/{cutoff}/{hmm}.faa.clstr'
+  output :
+    'clusters/{cutoff}/{hmm}.tsv'
+  log :
+    'logs/postcluster/{cutoff}_{hmm}.log'
+  run :
+    with open( output[0], 'w' ) as f :
+      for cluster in read_cdhit( input[0] ) :
+        f.write( '\t'.join( [ s.name for s in cluster.sequences ] + '\n' ) )
 
 rule fasttree :
   input :
