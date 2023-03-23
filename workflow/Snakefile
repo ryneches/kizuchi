@@ -42,6 +42,7 @@ def parse_hmmsearch( path ) :
 rule all :
   input :
     expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
+    expand( 'clusters/{cutoff}/{hmm}.tsv', cutoff=OTU_THRESHOLDS, hmm=HMMS ),
     'statistics/summary.txt'
 
 rule clean :
@@ -256,7 +257,7 @@ rule postcluster :
   run :
     with open( output[0], 'w' ) as f :
       for cluster in read_cdhit( input[0] ) :
-        f.write( '\t'.join( [ s.name for s in cluster.sequences ] + '\n' ) )
+        f.write( '\t'.join( [ s.name for s in cluster.sequences ] ) + '\n' )
 
 rule fasttree :
   input :
