@@ -14,6 +14,10 @@ FILES2 = glob_wildcards( 'data/genomes-enabled/{fasta}.fna' )
 HMMS    = FILES1.hmm
 GENOMES = FILES2.fasta
 
+# split genomes into reference and queries for fastANI
+R = GENOMES[:len(GENOMES)//2]
+L = GENOMES[len(GENOMES)//2:]
+
 # e-value threshold for HMM search
 EVALUE = 10e-3
 
@@ -299,3 +303,39 @@ rule taxatrees :
                  schema='newick' )
       else :
         open( output[0], 'w' ).close()
+
+rule preani :
+  input :
+    references = expand( 'data/genomes-enabled/{reference}.fna', reference=R ),
+    queries    = expand( 'data/genomes-enabled/{query}.fna', query=Q )
+  output :
+    references = 'preani/references.fna',
+    queries    = 'preani/queries.fna',
+    contig_map = 'preani/contigs.tsv'
+  log :
+    'log/preani/preani.log'
+  run :
+    with open( output.contig_map, 'w' ) as cf :
+      with open( output.references, 'w' ) as rf :
+        for fasta in input.references :
+          for seq in parse( open( fasta ), 'fasta' ) :
+            rf.write( seq.format( 'fasta' ) )
+            cf.write( Path( fasta ).stem + '\t' + seq.id + '\n' )
+      with open( output.queries, 'w' ) as qf :
+        for fasta in input.queries as f :
+          for seq in parse( open( fasta ), 'fasta' ) :
+            f.write( seq.format( 'format' ) )
+            cf.write( Path( fasta ).stem + '\t' + seq.id + '\n' )
+
+rule fastani :
+  input :
+    reference = 'preani/references.fna',
+    query     = 'preani/queries.fna'
+  output :
+    'ani/ani.tsv'
+  log :
+    'logs/fastani.log'
+  params :
+    name = 'ani/ani'
+  wrapper :
+    'file://wrappers/fastani'

@@ -1,0 +1,10 @@
+name: fasttree-pairwise
+description: compute alignment-free genome-to-genome ANI using fastANI. https://github.com/ParBLiSS/FastANI
+authors:
+  - Russell Neches
+input:
+  - Two genomes in FASTA format
+output:
+  - TSV of scored fragments
+notes: |
+  - in this mode, two genomes are compared and output is created using the --visualize option
