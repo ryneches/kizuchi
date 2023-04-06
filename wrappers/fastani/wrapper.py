@@ -1,20 +1,21 @@
-__author__ = 'Russell Neches'
+__author__    = 'Russell Neches'
 __copyright__ = 'Copyright 2023, Russell Neches'
-__email__ = 'russell@vort.org'
-__license__ = 'MIT'
+__email__     = 'russell@vort.org'
+__license__   = 'MIT'
 
 
 from snakemake.shell import shell
 import os
 
-log = snakemake.log_fmt_shell(stdout=False, stderr=True)
-extra = snakemake.params.get('extra', '')
+log = snakemake.log_fmt_shell( stdout=True, stderr=True )
+extra = snakemake.params.get( 'extra', '' )
 
 shell(
     'fastANI '
     '{extra} '
-    '-r {snakemake.input.reference} '
-    '-q {snakemake.input.query} '
-    '-o {snakemake.params.name} '
-    '2> {snakemake.log} '
+    '-t {snakemake.threads} '
+    '--rl {snakemake.input.reference} '
+    '--ql {snakemake.input.query} '
+    '-o {snakemake.output[0]} '
+    '{log} '
 )

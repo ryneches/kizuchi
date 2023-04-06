@@ -12,11 +12,13 @@ FILES2 = glob_wildcards( 'data/genomes-enabled/{fasta}.fna' )
 
 # extract the {hmm} values into a list
 HMMS    = FILES1.hmm
+
+# extract the {fasta} values into a list
 GENOMES = FILES2.fasta
 
-# split genomes into reference and queries for fastANI
+# reference and query set for fastANI
 R = GENOMES[:len(GENOMES)//2]
-L = GENOMES[len(GENOMES)//2:]
+Q = GENOMES[len(GENOMES)//2:]
 
 # e-value threshold for HMM search
 EVALUE = 10e-3
@@ -25,7 +27,7 @@ EVALUE = 10e-3
 AFT = 0.75
 
 # threads to use when invoking multithreaded applications
-THREADS=2
+THREADS=8
 
 # cutoff thresholds for OTU clustering
 OTU_THRESHOLDS = [ 0.5, 0.6, 0.7, 0.8, 0.9, 0.93, 0.95, 0.98, 0.99 ]
@@ -55,7 +57,9 @@ rule clean :
         prealignments\ alignments \
         trimmed_alignments\
         filtered_trimmed_alignments\
-        trees statistics logs'
+        trees statistics logs\
+        precluster_sequences clusters\
+        preani ani'
 
 rule statistics :
   input :
@@ -309,33 +313,26 @@ rule preani :
     references = expand( 'data/genomes-enabled/{reference}.fna', reference=R ),
     queries    = expand( 'data/genomes-enabled/{query}.fna', query=Q )
   output :
-    references = 'preani/references.fna',
-    queries    = 'preani/queries.fna',
-    contig_map = 'preani/contigs.tsv'
+    references = 'preani/references.txt',
+    queries    = 'preani/queries.txt',
   log :
-    'log/preani/preani.log'
+    'logs/preani/preani.log'
   run :
-    with open( output.contig_map, 'w' ) as cf :
-      with open( output.references, 'w' ) as rf :
-        for fasta in input.references :
-          for seq in parse( open( fasta ), 'fasta' ) :
-            rf.write( seq.format( 'fasta' ) )
-            cf.write( Path( fasta ).stem + '\t' + seq.id + '\n' )
-      with open( output.queries, 'w' ) as qf :
-        for fasta in input.queries as f :
-          for seq in parse( open( fasta ), 'fasta' ) :
-            f.write( seq.format( 'format' ) )
-            cf.write( Path( fasta ).stem + '\t' + seq.id + '\n' )
+    with open( output.references, 'w' ) as rf :
+      for fasta in input.references :
+        rf.write( fasta + '\n' )
+    with open( output.queries, 'w' ) as qf :
+      for fasta in input.queries :
+        qf.write( fasta + '\n' )
 
 rule fastani :
   input :
-    reference = 'preani/references.fna',
-    query     = 'preani/queries.fna'
+    reference = 'preani/references.txt',
+    query     = 'preani/queries.txt'
   output :
     'ani/ani.tsv'
   log :
-    'logs/fastani.log'
-  params :
-    name = 'ani/ani'
+    'logs/fastani/fastani.log'
+  threads : THREADS
   wrapper :
     'file://wrappers/fastani'
