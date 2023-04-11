@@ -6,10 +6,14 @@ from cdhit_reader import read_cdhit
 from Bio.SeqIO import parse
 from Bio import AlignIO
 from Bio.Align import MultipleSeqAlignment
-from numpy import linspace, zeros
+from numpy import linspace, zeros, unique
 from collections import defaultdict
+from itertools import combinations
 from scipy.cluster.hierarchy import single, fcluster
 from scipy.spatial.distance import squareform
+from scipy.stats import kendalltau, pearsonr, skew, kurtosis
+from statistics import stdev
+from SuchTree import SuchTree, SuchLinkedTrees
 
 FILES1 = glob_wildcards( 'data/hmms-enabled/{hmm}.hmm' )
 FILES2 = glob_wildcards( 'data/genomes-enabled/{fasta}.fna' )
@@ -23,6 +27,9 @@ GENOMES = FILES2.fasta
 # reference and query set for fastANI
 R = GENOMES[:len(GENOMES)//2]
 Q = GENOMES[len(GENOMES)//2:]
+
+# lists of all gene pairs
+HMMS1,HMMS2 = list( zip( *combinations( HMMS, 2 ) ) )
 
 # e-value threshold for HMM search
 EVALUE = 10e-3
@@ -38,6 +45,10 @@ GENE_OTU_THRESHOLDS = [ 0.7, 0.8, 0.9, 0.93, 0.95, 0.98, 0.99 ]
 
 # cutoff thresholds for genome ANI clustering
 ANI_THRESHOLDS = linspace( 75, 99, 25 )
+
+
+# minimum number of links per cluster for tree correlation
+MIN_CLUSTER_LINKS = 5
 
 # borrowed from CheckV
 def parse_hmmsearch( path ) :
@@ -95,7 +106,8 @@ rule all :
   input :
     expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
     expand( 'gene_clusters/{gene_cutoff}/{hmm}.tsv', gene_cutoff=GENE_OTU_THRESHOLDS, hmm=HMMS ),
-    expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS ),
+    #expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS ),
+    expand( 'cluster_correlations/{hmm1}_{hmm2}.tsv', hmm1=HMMS1, hmm2=HMMS2 ),
     'statistics/summary.txt'
 
 rule clean :
@@ -417,9 +429,9 @@ rule ani_clusters :
     fastani.drop_duplicates( subset='hash', keep='first', inplace=True )
     fastani.drop( ['hash'], axis=1, inplace=True )
     
-    # put the 
+    # convert % identity to a distance measure for clustering
     threshold = 1.0 - float( Path( output[0] ).stem.rsplit( '_', 1 )[1] )/100
-
+    
     with open( output[0], 'w' ) as f :
       genomes = list( set( fastani['query'] ) | set( fastani['reference'] ) )
     
@@ -442,3 +454,83 @@ rule ani_clusters :
         
       for cid, cg in ani_clusters.items() :
         f.write( '{cid}\t{genomes}\n'.format( cid=str(cid), genomes=','.join(cg) ) )
+
+rule clusterlinks :
+  input :
+    treeA = 'trees/by_gene/{hmm1}.nwk',
+    treeB = 'trees/by_gene/{hmm2}.nwk',
+    ani_clusters = expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS )
+  output :
+    'cluster_correlations/{hmm1}_{hmm2}.tsv'
+  params :
+    min_cluster_links = MIN_CLUSTER_LINKS
+  log :
+    'logs/cluster_correlations/{hmm1}_{hmm2}.log'
+  run :
+    
+    gene1_name = Path( input.treeA ).stem.rsplit( '.', 1 )[0]
+    gene2_name = Path( input.treeB ).stem.rsplit( '.', 1 )[0]
+    threshold  = Path( output[0]   ).stem.rsplit( '_', 1 )[1]
+    
+    T1 = SuchTree( input.treeA )
+    T2 = SuchTree( input.treeB )
+    links = find_links( T1, T2 )
+
+    data = []
+    for ani_cluster_file in input.ani_clusters :
+      with open( ani_cluster_file ) as f :
+        ani_clusters = { cid : c.split(',') for cid,c in [ line.split('\t') for line in f ] }
+        
+      cluster_links = defaultdict(list)
+      for key in ani_clusters.keys() :
+        for a,b in links :
+          a_genome = a.rsplit('_',3)[0]
+          b_genome = b.rsplit('_',3)[0]
+          if a_genome in ani_clusters[key] and b_genome in ani_clusters[key] :
+            cluster_links[key].append( ( a, b ) )
+      
+      for cid,c in cluster_links.items() :
+        if len(c) > params.min_cluster_links :
+            gene1_pairs = []
+            gene2_pairs = []
+            
+            for (t1a,t2a),(t1b,t2b) in combinations( c, 2 ) :
+                gene1_pairs.append( ( t1a, t1b ) )
+                gene2_pairs.append( ( t2a, t2b ) )
+            
+            gene1_distances = T1.distances_by_name( gene1_pairs )
+            gene2_distances = T2.distances_by_name( gene2_pairs )
+            
+            # don't include degenerate clusters
+            if len( unique( gene1_distances ) ) / len( gene1_distances ) < 0.5 : continue
+            if len( unique( gene2_distances ) ) / len( gene2_distances ) < 0.5 : continue
+
+            gene1_skew = skew( gene1_distances )
+            gene2_skew = skew( gene2_distances )
+
+            gene1_kurtosis = kurtosis( gene1_distances )
+            gene2_kurtosis = kurtosis( gene2_distances )
+
+            gene1_stdev = stdev( gene1_distances )
+            gene2_stdev = stdev( gene2_distances )
+
+            r,pr = pearsonr(   gene1_distances, gene2_distances )
+            t,pt = kendalltau( gene1_distances, gene2_distances )
+
+            data.append(  { 'gene1'          : gene1_name,
+                            'gene2'          : gene2_name,
+                            'links'          : len(c),
+                            'gene1_skew'     : gene1_skew,
+                            'gene2_skew'     : gene2_skew,
+                            'gene1_kurtosis' : gene1_kurtosis,
+                            'gene2_kurtosis' : gene2_kurtosis,
+                            'gene1_stdev'    : gene1_stdev,
+                            'gene2_stdev'    : gene2_stdev,
+                            'r'              : r,
+                            'pr'             : pr,
+                            'tau'            : t,
+                            'p_tau'          : pt,
+                            'cluster'        : cid,
+                            'ANI'            : threshold } )
+    
+    pandas.DataFrame( data ).to_csv( output[0], sep='\t', index=False )
