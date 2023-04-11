@@ -23,6 +23,7 @@ else :
 
     shell(
         'cd-hit '
+        ' -c {snakemake.params.cutoff} '
         ' -i {snakemake.input}'
         ' -o {snakemake.output.rep_seqs}'
         ' -d 0'

@@ -6,6 +6,10 @@ from cdhit_reader import read_cdhit
 from Bio.SeqIO import parse
 from Bio import AlignIO
 from Bio.Align import MultipleSeqAlignment
+from numpy import linspace, zeros
+from collections import defaultdict
+from scipy.cluster.hierarchy import single, fcluster
+from scipy.spatial.distance import squareform
 
 FILES1 = glob_wildcards( 'data/hmms-enabled/{hmm}.hmm' )
 FILES2 = glob_wildcards( 'data/genomes-enabled/{fasta}.fna' )
@@ -29,8 +33,11 @@ AFT = 0.75
 # threads to use when invoking multithreaded applications
 THREADS=8
 
-# cutoff thresholds for OTU clustering
-OTU_THRESHOLDS = [ 0.5, 0.6, 0.7, 0.8, 0.9, 0.93, 0.95, 0.98, 0.99 ]
+# cutoff thresholds for gene clustering
+GENE_OTU_THRESHOLDS = [ 0.7, 0.8, 0.9, 0.93, 0.95, 0.98, 0.99 ]
+
+# cutoff thresholds for genome ANI clustering
+ANI_THRESHOLDS = linspace( 75, 99, 25 )
 
 # borrowed from CheckV
 def parse_hmmsearch( path ) :
@@ -45,10 +52,50 @@ def parse_hmmsearch( path ) :
         yield dict( [ ( names[i], formats[i](values[i]) ) 
                       for i in range(10) ] )
 
+def find_links( T1, T2 ) :
+    '''
+    For two SuchTree objects representing two gene trees from the same set of
+    genomes, find the links connecting leaf nodes in each gene tree.
+    '''
+    t1_genomes = { name : name.rsplit('_', 3)[0] for name in T1.leafs.keys() }
+    t2_genomes = { name : name.rsplit('_', 3)[0] for name in T2.leafs.keys() }
+    
+    t1_genes = defaultdict(list)
+    for name in T1.leafs.keys() :
+        genome = name.rsplit( '_', 3 )[0]
+        t1_genes[genome].append( name )
+    
+    t2_genes = defaultdict(list)
+    for name in T2.leafs.keys() :
+        genome = name.rsplit( '_', 3 )[0]
+        t2_genes[genome].append( name )
+    
+    links = []
+    for genome in set( t1_genes.keys() ) & set( t2_genes.keys() ) :
+        
+        # if both genes are single copy a genome, it is linked
+        # if either gene has duplications, each copy of each
+        # gene is linked only if they are on the same contig
+        
+        if len( t1_genes[ genome] ) == len( t2_genes[ genome ] ) == 1 :
+            
+            links.append( ( t1_genes[genome][0], t2_genes[genome][0] ) )
+            
+        else :
+            for gene1 in t1_genes[ genome ] :
+                for gene2 in t2_genes[ genome ] :
+                    contig1 = gene1.rsplit('_', 2)[0]
+                    contig2 = gene2.rsplit('_', 2)[0]
+                    if contig1 == contig2 :
+                        links.append( ( gene1, gene2 ) )
+    
+    return links
+
 rule all :
   input :
     expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
-    expand( 'clusters/{cutoff}/{hmm}.tsv', cutoff=OTU_THRESHOLDS, hmm=HMMS ),
+    expand( 'gene_clusters/{gene_cutoff}/{hmm}.tsv', gene_cutoff=GENE_OTU_THRESHOLDS, hmm=HMMS ),
+    expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS ),
     'statistics/summary.txt'
 
 rule clean :
@@ -244,24 +291,26 @@ rule precluster :
         rec.seq = rec.seq.replace( '-', '' )
         f.write( rec.format( 'fasta' ) )
 
-rule cluster :
+rule gene_cluster :
   input :
     'precluster_sequences/{hmm}.faa'
   output :
-    clusters = 'clusters/{cutoff}/{hmm}.faa.clstr',
-    rep_seqs = 'clusters/{cutoff}/{hmm}.faa'
+    clusters = 'gene_clusters/{gene_cutoff}/{hmm}.faa.clstr',
+    rep_seqs = 'gene_clusters/{gene_cutoff}/{hmm}.faa'
   log :
-    'logs/cluster/{cutoff}_{hmm}.log'
+    'logs/gene_cluster/{gene_cutoff}_{hmm}.log'
+  params :
+    cutoff   = '{gene_cutoff}'
   wrapper :
     'file://wrappers/cd-hit'
 
 rule postcluster :
   input :
-    'clusters/{cutoff}/{hmm}.faa.clstr'
+    'gene_clusters/{gene_cutoff}/{hmm}.faa.clstr'
   output :
-    'clusters/{cutoff}/{hmm}.tsv'
+    'gene_clusters/{gene_cutoff}/{hmm}.tsv'
   log :
-    'logs/postcluster/{cutoff}_{hmm}.log'
+    'logs/postcluster/{gene_cutoff}_{hmm}.log'
   run :
     with open( output[0], 'w' ) as f :
       for cluster in read_cdhit( input[0] ) :
@@ -336,3 +385,60 @@ rule fastani :
   threads : THREADS
   wrapper :
     'file://wrappers/fastani'
+
+rule ani_clusters :
+  input :
+    ani = 'ani/ani.tsv',
+  output :
+    'ani_clusters/ani_clusters_{ani_cutoff}.txt'
+  log :
+    'log/ani_clusters/{ani_cutoff}.log'
+  run :
+    header = [ 'query', 'reference', 'ANI', 
+               'bidirectional fragment mappings',
+               'total query fragments' ]
+    
+    fastani = pandas.read_csv( input.ani, sep='\t', names=header )
+    
+    # file names -> genome names
+    fastani['query']     = [ Path(p).stem for p in fastani['query'] ]
+    fastani['reference'] = [ Path(p).stem for p in fastani['reference'] ]
+    
+    # drop self-hits
+    fastani = fastani[ fastani['query'] != fastani['reference'] ]
+    
+    # de-duplicate (i.e., take the lower triangle of the matrix)
+    fastani['hash'] = fastani.apply( lambda row : hash( 
+                                                    tuple(
+                                                      sorted( ( row['query'],
+                                                                row['reference'] ) ) ) ), 
+                                    axis=1 )
+
+    fastani.drop_duplicates( subset='hash', keep='first', inplace=True )
+    fastani.drop( ['hash'], axis=1, inplace=True )
+    
+    # put the 
+    threshold = 1.0 - float( Path( output[0] ).stem.rsplit( '_', 1 )[1] )/100
+
+    with open( output[0], 'w' ) as f :
+      genomes = list( set( fastani['query'] ) | set( fastani['reference'] ) )
+    
+      D = zeros( ( len(genomes), len(genomes) ) )
+      D.fill( 1.0 )
+        
+      for i in range(len(genomes)) :
+        D[i,i] = 0.0
+        
+      for n,row in fastani.iterrows() :
+        i = genomes.index( row['query'] )
+        j = genomes.index( row['reference'] )
+        D[i,j] = D[j,i] = 1.0 - row['ANI']/100
+         
+      ani_clusters = defaultdict(list)
+      for n,c in enumerate( fcluster( single( squareform(D) ),
+                                      threshold,
+                                      criterion='distance' ) ) :
+        ani_clusters[c].append( genomes[n] )
+        
+      for cid, cg in ani_clusters.items() :
+        f.write( '{cid}\t{genomes}\n'.format( cid=str(cid), genomes=','.join(cg) ) )
