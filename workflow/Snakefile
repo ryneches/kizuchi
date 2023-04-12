@@ -28,7 +28,7 @@ GENOMES = FILES2.fasta
 R = GENOMES[:len(GENOMES)//2]
 Q = GENOMES[len(GENOMES)//2:]
 
-# lists of all gene pairs
+# gene pair lists
 HMMS1,HMMS2 = list( zip( *combinations( HMMS, 2 ) ) )
 
 # e-value threshold for HMM search
@@ -107,7 +107,8 @@ rule all :
     expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
     expand( 'gene_clusters/{gene_cutoff}/{hmm}.tsv', gene_cutoff=GENE_OTU_THRESHOLDS, hmm=HMMS ),
     #expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS ),
-    expand( 'cluster_correlations/{hmm1}_{hmm2}.tsv', hmm1=HMMS1, hmm2=HMMS2 ),
+    #expand( 'cluster_correlations/{hmm1}_{hmm2}.tsv', zip, hmm1=HMMS ),
+    'cluster_correlations/cluster_correlations.tsv'
     'statistics/summary.txt'
 
 rule clean :
@@ -534,3 +535,24 @@ rule clusterlinks :
                             'ANI'            : threshold } )
     
     pandas.DataFrame( data ).to_csv( output[0], sep='\t', index=False )
+
+rule merge_cluster_correlations :
+  input :
+    tsvs = expand( 'cluster_correlations/{hmm1}_{hmm2}.tsv', zip, hmm1=HMMS1, hmm2=HMMS2 )
+  output :
+    'cluster_correlations/cluster_correlations.tsv'
+  log :
+    'logs/cluster_correlations/cluster_correlations.log'
+  run :
+    with open( log[0], 'w' ) as logfile :
+      data = []
+      for fname in input.tsvs :
+        logfile.write( 'reading {fname}...'.format( fname=fname ) )
+        try :
+          data.append( pandas.read_csv( fname, sep='\t' ) )
+        except pandas.errors.EmptyDataError :
+          pass
+      df = pandas.concat( data, ignore_index=True )
+      df.to_csv( output[0], sep='\t', index=False )
+
+
