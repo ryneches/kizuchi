@@ -4,7 +4,7 @@ from copy import deepcopy
 from hmm_profile import reader, writer
 from cdhit_reader import read_cdhit
 from Bio.SeqIO import parse
-from Bio import AlignIO
+from Bio import AlignIO, SearchIO
 from Bio.Align import MultipleSeqAlignment
 from numpy import linspace, zeros, unique
 from collections import defaultdict
@@ -104,37 +104,74 @@ def find_links( T1, T2 ) :
 
 rule all :
   input :
-    expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
-    expand( 'gene_clusters/{gene_cutoff}/{hmm}.tsv', gene_cutoff=GENE_OTU_THRESHOLDS, hmm=HMMS ),
+    #expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
+    #expand( 'gene_clusters/{gene_cutoff}/{hmm}.tsv', gene_cutoff=GENE_OTU_THRESHOLDS, hmm=HMMS ),
     #expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS ),
     #expand( 'cluster_correlations/{hmm1}_{hmm2}.tsv', zip, hmm1=HMMS ),
-    'cluster_correlations/cluster_correlations.tsv'
-    'statistics/summary.txt'
+    #'statistics/hmmr_summary.txt'
+    'cluster_correlations/cluster_correlations.tsv',
 
 rule clean :
   shell :
     'rm -rf proteins hmm_hits hmmdb \
-        prealignments\ alignments \
+        prealignments alignments \
         trimmed_alignments\
         filtered_trimmed_alignments\
         trees statistics logs\
         precluster_sequences clusters\
-        preani ani'
+        preani ani cluster_correlations'
 
-rule statistics :
+rule hmmr_summary :
   input :
-    hmms       = expand( 'data/hmms-enabled/{hmm}.hmm', hmm=HMMS ),
     genomes    = expand( 'data/genomes-enabled/{fasta}.fna', fasta=GENOMES ),
     proteins   = expand( 'proteins/{fasta}_genes.faa', fasta=GENOMES ),
     hits       = expand( 'hmm_hits/{fasta}_prot_tbl.txt', hmm=HMMS, fasta=GENOMES ),
-    alignments = expand( 'trimmed_alignments/{hmm}.msa.faa', hmm=HMMS ),
-    trees      = expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS )
   output :
-    'statistics/summary.txt'
+    'statistics/hmmr_summary.txt'
   log :
-    notebook='logs/notebooks/statistics.ipynb',
-  notebook :
-    'notebooks/statistics.ipynb'
+    'logs/statistics/hmmr_summary.log'
+  run :
+    attribs = [ 'accession', 'bias', 'bitscore', 'description',
+                'cluster_num', 'domain_exp_num', 'domain_included_num',
+                'domain_obs_num', 'domain_reported_num', 'env_num',
+                'evalue', 'id', 'overlap_num', 'region_num']
+    
+    hitlist = {}
+    
+    for hmm_hits in input.hits :
+      hits = defaultdict(list)
+      with open( hmm_hits ) as handle :
+        for queryresult in SearchIO.parse( handle, 'hmmer3-tab' ) :
+          for hit in queryresult.hits :
+            for attrib in attribs :
+              hits[attrib].append( getattr(hit, attrib) )
+            hitlist[hit.id] = { 'hmm'      : queryresult.id,
+                                'bitscore' : hit.bitscore }
+    
+    # Note : counting proteins from 1 instead of 0 because that's how
+    # prodigal does it. Other counts are from 0.
+    
+    with open( output[0], 'w' ) as f :
+      for fna,faa in list( zip( input.genomes, input.proteins ) ) :
+        f.write( fna + '\n')
+        contigs  = [ rec.id for rec in parse( open( fna ), 'fasta' ) ]
+        proteins = [ rec.id for rec in parse( open( faa ), 'fasta' ) ]
+        annot = {}
+        for r in proteins :
+          contig = r.rsplit('_', 1)[0]
+          if not contig in annot :
+            annot[contig] = []
+          annot[contig].append( r )
+        for n,contig in enumerate( contigs ) :
+          f.write( '   contig {n} : {c} '.format( n=n, c=contig ) + '\n' )
+          for m,protein in enumerate( annot[contig] ) :
+            if protein in hitlist :
+              f.write( '      protien {m} : {p}\n'.format( m=m+1, p=protein ) )
+              f.write( '         hmm : {h} bitscore {b}\n'.format( h=hitlist[protein]['hmm'],
+                                                                   b=hitlist[protein]['bitscore'] ) )
+            else :
+              f.write( '      protien {m} : {p}\n'.format( m=m+1, p=protein ) )
+
 
 rule prodigal :
   input :
@@ -471,7 +508,6 @@ rule clusterlinks :
     
     gene1_name = Path( input.treeA ).stem.rsplit( '.', 1 )[0]
     gene2_name = Path( input.treeB ).stem.rsplit( '.', 1 )[0]
-    threshold  = Path( output[0]   ).stem.rsplit( '_', 1 )[1]
     
     T1 = SuchTree( input.treeA )
     T2 = SuchTree( input.treeB )
@@ -479,6 +515,9 @@ rule clusterlinks :
 
     data = []
     for ani_cluster_file in input.ani_clusters :
+
+      threshold  = Path( ani_cluster_file ).stem.rsplit( '_', 1 )[1]
+
       with open( ani_cluster_file ) as f :
         ani_clusters = { cid : c.split(',') for cid,c in [ line.split('\t') for line in f ] }
         
