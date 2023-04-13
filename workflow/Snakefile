@@ -119,7 +119,8 @@ rule clean :
         filtered_trimmed_alignments\
         trees statistics logs\
         precluster_sequences clusters\
-        preani ani cluster_correlations'
+        preani ani ani_clusters\
+        cluster_correlations'
 
 rule hmmr_summary :
   input :
@@ -442,7 +443,7 @@ rule ani_clusters :
   output :
     'ani_clusters/ani_clusters_{ani_cutoff}.txt'
   log :
-    'log/ani_clusters/{ani_cutoff}.log'
+    'logs/ani_clusters/{ani_cutoff}.log'
   run :
     header = [ 'query', 'reference', 'ANI', 
                'bidirectional fragment mappings',
