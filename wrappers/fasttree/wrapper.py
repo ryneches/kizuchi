@@ -27,4 +27,5 @@ else :
         ' -out {snakemake.output.tree}'
         ' -log {snakemake.log[0]}'
         ' {snakemake.input.alignment}'
+        ' {log}'
     )
