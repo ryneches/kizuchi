@@ -14,7 +14,7 @@ extra = snakemake.params.get( 'extra', '' )
 # empty output file and exit.
 if open( snakemake.input[0] ).read().count( '>' ) < 3 :
     
-   with open( snakemake.log, 'w' ) as f :
+   with open( snakemake.log[0], 'w' ) as f :
       f.write( 'Too few records to perform an alignment.' )
    with open( snakemake.output[0], 'w' ) as f :
       f.write( '' )
