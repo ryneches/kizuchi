@@ -14,7 +14,13 @@ from scipy.spatial.distance import squareform
 from scipy.stats import kendalltau, pearsonr, skew, kurtosis
 from statistics import stdev
 from SuchTree import SuchTree, SuchLinkedTrees
+from snakemake.utils import validate
 
+# load and validate configuration
+configfile : 'config.yaml'
+validate( config, 'config.schema.yaml' )
+
+# index data inputs
 FILES1 = glob_wildcards( 'data/hmms-enabled/{hmm}.hmm' )
 FILES2 = glob_wildcards( 'data/genomes-enabled/{fasta}.fna' )
 
