@@ -1,0 +1,22 @@
+name: kizuchi
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - numpy
+  - scipy
+  - pandas
+  - cluastalo
+  - cd-hit
+  - hmmer
+  - prodigal-gv
+  - fasttree
+  - fastani
+  - trimal
+  - pip
+  - pip:
+    - SuchTree
+    - dendropy
+    - hmm-profile
+    - cdhit-reader
