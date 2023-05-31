@@ -1,7 +1,7 @@
 # load configuration
 configfile : 'config/config.yaml'
 
-import os, pandas, dendropy
+import os, pandas, polars, dendropy
 from pathlib import Path
 from copy import deepcopy
 from hmm_profile import reader, writer
@@ -50,7 +50,6 @@ GENE_OTU_THRESHOLDS = [ 0.7, 0.8, 0.9, 0.93, 0.95, 0.98, 0.99 ]
 # cutoff thresholds for genome ANI clustering
 ANI_THRESHOLDS = linspace( 75, 99, 25 )
 
-
 # minimum number of links per cluster for tree correlation
 MIN_CLUSTER_LINKS = 5
 
@@ -67,21 +66,21 @@ def parse_hmmsearch( path ) :
         yield dict( [ ( names[i], formats[i](values[i]) ) 
                       for i in range(10) ] )
 
-def find_links( T1, T2 ) :
+def find_links( genes1, genes2 ) :
     '''
-    For two SuchTree objects representing two gene trees from the same set of
-    genomes, find the links connecting leaf nodes in each gene tree.
+    For two sets of genes called from the same set of genomes, find the linkage
+    relationships connecting the genes.
     '''
-    t1_genomes = { name : name.rsplit('_', 3)[0] for name in T1.leafs.keys() }
-    t2_genomes = { name : name.rsplit('_', 3)[0] for name in T2.leafs.keys() }
+    t1_genomes = { name : name.rsplit('_', 3)[0] for name in genes1 }
+    t2_genomes = { name : name.rsplit('_', 3)[0] for name in genes2 }
     
     t1_genes = defaultdict(list)
-    for name in T1.leafs.keys() :
+    for name in genes1 :
         genome = name.rsplit( '_', 3 )[0]
         t1_genes[genome].append( name )
     
     t2_genes = defaultdict(list)
-    for name in T2.leafs.keys() :
+    for name in genes2 :
         genome = name.rsplit( '_', 3 )[0]
         t2_genes[genome].append( name )
     
@@ -227,7 +226,7 @@ rule scoring :
   input :
     # for each HMM...
     hits    = expand( 'hmm_hits/{fasta}_prot_tbl.txt', fasta=GENOMES ),
-    # ...score orthologs for each genome
+    # ... score orthologs for each genome...
     faa     = expand( 'proteins/{fasta}_genes.faa', fasta=GENOMES ),
     profile = 'hmmdb/models.hmm'
   output :
@@ -280,12 +279,85 @@ rule scoring :
           with open( p['prealign'], 'w' ) as f :
             f.write( '' )
 
+rule prealignment_sorting :
+  input :
+    prealignments = expand( 'prealignments/{hmm}.faa', hmm=HMMS ),
+    ani_clusters  = expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS )
+  output :
+    #cluster_prealignments = 'cluster_prealignments/{ANI_THRESHOLDS}/{CLUSTER_ID}/{HMM}.faa'
+    cluster_prealignments = 'cluster_prealignments/clusters.tsv'
+  params :
+  log :
+    'logs/prealignment_sorting/prealignment_sorting.log'
+  run :
+    def intersect( hmms, genomes, threshold ) :
+      C = defaultdict( set )
+      for hmm,genome in zip( hmms, genomes ) :
+        C[hmm].add(genome)
+      return sum( [ len( C[a] & C[b] ) > threshold
+                    for a,b in combinations( C.keys(), 2 ) ] )
+    
+    with open( log[0], 'w' ) as LOG :
+      LOG.write( 'loading sequences...\n' )
+      sequences = { Path(fasta).stem : { rec.id : rec.seq for rec in parse( open( fasta ), 'fasta' ) } 
+                    for fasta in input.prealignments }
+      
+      for hmm in sequences.keys() :
+        LOG.write( '{hmm} : {n}\n'.format( hmm=hmm, n=len(sequences[hmm]) ) )
+      
+      LOG.write( 'creating gene table for genome clusters...\n' )
+      records = []
+      for clusterfile in input.ani_clusters :
+        for cid,names in [ line.split() for line in open( clusterfile ) ] :
+          names = names.split(',')
+          #if not len( names ) > 5 : continue
+          for hmm in sequences.keys() :
+            seq_ids = [ seq_id for seq_id in sequences[hmm].keys() if seq_id.rsplit('_',3)[0] in names ]
+            for seq_id in seq_ids :
+              records.append( { 'seq_id' : seq_id,
+                                'genome' : seq_id.rsplit('_',3)[0],
+                                'cid'    : cid,
+                                'hmm'    : hmm,
+                                'ANI'    : Path( clusterfile ).stem.split('_')[-1],
+                                'id'     : cid + '_' + Path( clusterfile ).stem.split('_')[-1] } )
+      
+      df = polars.DataFrame( records )
+      
+      LOG.write( 'number of clusters by ANI...\n' )
+      for ani,n in df.groupby('ANI').agg( polars.col('cid').unique().count() ).sort('ANI').iter_rows() :
+        LOG.write( '    ANI={ani} : {n} clusters\n'.format( ani=ani, n=n ) )
+      
+      LOG.write( 'gene table description :\n\n' + str( df.describe() ) + '\n' )
+      
+      clusters = df.groupby('id').agg( ['hmm','genome'] ).apply(
+                         lambda x : ( x[0],
+                           intersect( x[1],
+                                      x[2],
+                                      MIN_CLUSTER_LINKS ) ) ).filter( polars.col('column_1') > 0 )['column_0']
+      
+      LOG.write( 'found {n} genome clusters with at least {T} genomes sharing at least two genes.\n'.format(
+                 n=len(clusters), T=MIN_CLUSTER_LINKS ) )
+      
+      #for cluster in clusters :
+      #  cid,ANI = cluster.split('_')
+      #  clusterseqs = df.filter( polars.col('id') == cluster )
+      #  for hmm in set( clusterseqs['hmm'] ) :
+      #    with open( output.path + '/' + str(ANI) + '/' + cid + '/' + hmm + '.fasta', 'w' ) as f :
+      #      for seq_id in clusterseqs.filter( polars.col('hmm') == hmm ) :
+      #        f.write( sequences[hmm][seq_id].format( 'fasta' ) )
+      
+      cluster_table = df.filter( polars.col('id').is_in( clusters ) )
+      
+      LOG.write( 'filtered gene table description :\n\n' + str( cluster_table.describe() ) )
+
+      cluster_table.write_csv( file=output.cluster_prealignments, sep='\t' )
+      
 rule clustalo :
   input :
     'prealignments/{hmm}.faa'
   output :
     'alignments/{hmm}.msa.faa'
-  params:
+  params :
     extra=''
   log :
     'logs/clustalo/{hmm}.log'
@@ -517,12 +589,12 @@ rule clusterlinks :
     T1 = SuchTree( input.treeA )
     T2 = SuchTree( input.treeB )
     links = find_links( T1, T2 )
-
+    
     data = []
     for ani_cluster_file in input.ani_clusters :
-
+      
       threshold  = Path( ani_cluster_file ).stem.rsplit( '_', 1 )[1]
-
+      
       with open( ani_cluster_file ) as f :
         ani_clusters = { cid : c.split(',') for cid,c in [ line.split('\t') for line in f ] }
         
@@ -549,19 +621,19 @@ rule clusterlinks :
             # don't include degenerate clusters
             if len( unique( gene1_distances ) ) / len( gene1_distances ) < 0.5 : continue
             if len( unique( gene2_distances ) ) / len( gene2_distances ) < 0.5 : continue
-
+            
             gene1_skew = skew( gene1_distances )
             gene2_skew = skew( gene2_distances )
-
+            
             gene1_kurtosis = kurtosis( gene1_distances )
             gene2_kurtosis = kurtosis( gene2_distances )
-
+            
             gene1_stdev = stdev( gene1_distances )
             gene2_stdev = stdev( gene2_distances )
-
+            
             r,pr = pearsonr(   gene1_distances, gene2_distances )
             t,pt = kendalltau( gene1_distances, gene2_distances )
-
+            
             data.append(  { 'gene1'          : gene1_name,
                             'gene2'          : gene2_name,
                             'links'          : len(c),
