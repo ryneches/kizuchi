@@ -230,7 +230,7 @@ rule scoring :
     faa     = expand( 'proteins/{fasta}_genes.faa', fasta=GENOMES ),
     profile = 'hmmdb/models.hmm'
   output :
-    prealign = expand( 'prealignments/{hmm}.faa', hmm=HMMS )
+    prealign = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS )
   log :
     'logs/scoring/scoring.log'
   run :
@@ -279,16 +279,15 @@ rule scoring :
           with open( p['prealign'], 'w' ) as f :
             f.write( '' )
 
-rule prealignment_sorting :
+rule cluster_filtering :
   input :
-    prealignments = expand( 'prealignments/{hmm}.faa', hmm=HMMS ),
+    prealignments = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS ),
     ani_clusters  = expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS )
   output :
-    #cluster_prealignments = 'cluster_prealignments/{ANI_THRESHOLDS}/{CLUSTER_ID}/{HMM}.faa'
-    cluster_prealignments = 'cluster_prealignments/clusters.tsv'
+    clusters = 'cluster_filtering/clusters.tsv'
   params :
   log :
-    'logs/prealignment_sorting/prealignment_sorting.log'
+    'logs/cluster_filtering/cluster_filtering.log'
   run :
     def intersect( hmms, genomes, threshold ) :
       C = defaultdict( set )
@@ -316,9 +315,9 @@ rule prealignment_sorting :
             for seq_id in seq_ids :
               records.append( { 'seq_id' : seq_id,
                                 'genome' : seq_id.rsplit('_',3)[0],
-                                'cid'    : cid,
+                                'cid'    : int( cid ),
                                 'hmm'    : hmm,
-                                'ANI'    : Path( clusterfile ).stem.split('_')[-1],
+                                'ANI'    : float( Path( clusterfile ).stem.split('_')[-1] ),
                                 'id'     : cid + '_' + Path( clusterfile ).stem.split('_')[-1] } )
       
       df = polars.DataFrame( records )
@@ -338,20 +337,45 @@ rule prealignment_sorting :
       LOG.write( 'found {n} genome clusters with at least {T} genomes sharing at least two genes.\n'.format(
                  n=len(clusters), T=MIN_CLUSTER_LINKS ) )
       
-      #for cluster in clusters :
-      #  cid,ANI = cluster.split('_')
-      #  clusterseqs = df.filter( polars.col('id') == cluster )
-      #  for hmm in set( clusterseqs['hmm'] ) :
-      #    with open( output.path + '/' + str(ANI) + '/' + cid + '/' + hmm + '.fasta', 'w' ) as f :
-      #      for seq_id in clusterseqs.filter( polars.col('hmm') == hmm ) :
-      #        f.write( sequences[hmm][seq_id].format( 'fasta' ) )
-      
       cluster_table = df.filter( polars.col('id').is_in( clusters ) )
       
       LOG.write( 'filtered gene table description :\n\n' + str( cluster_table.describe() ) )
 
-      cluster_table.write_csv( file=output.cluster_prealignments, sep='\t' )
-      
+      cluster_table.write_csv( file=output.clusters, sep='\t' )
+
+checkpoint write_cluster_fastas :
+  input :
+    cluster_table = 'cluster_filtering/clusters.tsv',
+    prealignments = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS ),
+  output :
+    clusters = directory( 'clusters' )
+  log :
+    'write_cluster_fastas/write_cluster_fastas.log'
+  run :
+    with open( log[0], 'w' ) as LOG :
+      LOG.write( 'loading sequences...\n' )
+      sequences = { Path(fasta).stem : { rec.id : rec for rec in parse( open( fasta ), 'fasta' ) } 
+                    for fasta in input.prealignments }
+ 
+      for hmm in sequences.keys() :
+        LOG.write( '{hmm} : {n}\n'.format( hmm=hmm, n=len(sequences[hmm]) ) )
+ 
+      LOG.write( 'loading cluster table...\n' )
+      df = polars.read_csv( input.cluster_table, sep='\t' )
+      LOG.write( 'found {n} clusters.\n'.format( n=len( df.groupby('id').agg('seq_id') ) ) )
+
+      os.mkdir( output.clusters )
+      for ANI,cids in df.groupby('ANI').agg( polars.col('cid').unique() ).sort('ANI').iter_rows() :
+        anipath = output.clusters + '/' + str(ANI) 
+        os.mkdir( anipath )
+        for cluster_id in cids :
+          clusterpath = anipath + '/' + str( cluster_id ) 
+          os.mkdir( clusterpath )
+          for hmm,seq_ids in df.filter( ( polars.col('ANI') == ANI ) & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg('seq_id').iter_rows() :
+            with open( clusterpath + '/' + hmm + '.faa', 'w' ) as f :
+              for seq_id in seq_ids :
+                f.write( sequences[hmm][seq_id].format( 'fasta' ) )
+
 rule clustalo :
   input :
     'prealignments/{hmm}.faa'
