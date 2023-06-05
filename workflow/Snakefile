@@ -47,9 +47,6 @@ AFT = 0.75
 # threads to use when invoking multithreaded applications
 THREADS=1
 
-# cutoff thresholds for gene clustering
-GENE_OTU_THRESHOLDS = [ 0.7, 0.8, 0.9, 0.93, 0.95, 0.98, 0.99 ]
-
 # cutoff thresholds for genome ANI clustering
 ANI_THRESHOLDS = linspace( 75, 99, 25 )
 
@@ -141,13 +138,9 @@ rule all :
 rule clean :
   shell :
     'rm -rf proteins hmm_hits hmmdb \
-        prealignments alignments \
-        trimmed_alignments\
-        filtered_trimmed_alignments\
-        trees statistics logs\
-        precluster_sequences clusters\
-        preani ani ani_clusters\
-        cluster_correlations'
+        clusters\
+        statistics logs\
+        preani ani ani_clusters
 
 rule hmmr_summary :
   input :
@@ -467,31 +460,6 @@ rule precluster :
       for rec in parse( open( input[0] ), 'fasta' ) :
         rec.seq = rec.seq.replace( '-', '' )
         f.write( rec.format( 'fasta' ) )
-
-rule gene_cluster :
-  input :
-    'precluster_sequences/{hmm}.faa'
-  output :
-    clusters = 'gene_clusters/{gene_cutoff}/{hmm}.faa.clstr',
-    rep_seqs = 'gene_clusters/{gene_cutoff}/{hmm}.faa'
-  log :
-    'logs/gene_cluster/{gene_cutoff}_{hmm}.log'
-  params :
-    cutoff   = '{gene_cutoff}'
-  wrapper :
-    'file://wrappers/cd-hit'
-
-rule postcluster :
-  input :
-    'gene_clusters/{gene_cutoff}/{hmm}.faa.clstr'
-  output :
-    'gene_clusters/{gene_cutoff}/{hmm}.tsv'
-  log :
-    'logs/postcluster/{gene_cutoff}_{hmm}.log'
-  run :
-    with open( output[0], 'w' ) as f :
-      for cluster in read_cdhit( input[0] ) :
-        f.write( '\t'.join( [ s.name for s in cluster.sequences ] ) + '\n' )
 
 rule fasttree :
   input :
