@@ -35,6 +35,9 @@ Q = GENOMES[len(GENOMES)//2:]
 # gene pair lists
 HMMS1,HMMS2 = list( zip( *combinations( HMMS, 2 ) ) )
 
+# cluster checkpoint wildcards
+CK = None
+
 # e-value threshold for HMM search
 EVALUE = 10e-3
 
@@ -42,7 +45,7 @@ EVALUE = 10e-3
 AFT = 0.75
 
 # threads to use when invoking multithreaded applications
-THREADS=8
+THREADS=1
 
 # cutoff thresholds for gene clustering
 GENE_OTU_THRESHOLDS = [ 0.7, 0.8, 0.9, 0.93, 0.95, 0.98, 0.99 ]
@@ -105,6 +108,24 @@ def find_links( genes1, genes2 ) :
     
     return links
 
+def get_alignment_filenames( wildcards ) :
+  ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
+  global CK
+  CK = glob_wildcards( os.path.join( ck_output,
+                                     '{ck_ani}',
+                                     '{ck_cid}',
+                                     'proteins',
+                                     '{ck_hmm}.faa' ) )
+  return expand( os.path.join( ck_output,
+                               '{ck_ani}',
+                               '{ck_cid}',
+                               'alignments',
+                               '{ck_hmm}_aln.faa' ),
+                 zip,
+                 ck_ani=CK.ck_ani,
+                 ck_cid=CK.ck_cid,
+                 ck_hmm=CK.ck_hmm )
+
 rule all :
   input :
     #expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
@@ -112,7 +133,10 @@ rule all :
     #expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS ),
     #expand( 'cluster_correlations/{hmm1}_{hmm2}.tsv', zip, hmm1=HMMS ),
     #'statistics/hmmr_summary.txt'
-    'cluster_correlations/cluster_correlations.tsv',
+    #'cluster_correlations/cluster_correlations.tsv',
+    #expand( 'clusters/{ani}/{cid}/alignments/{hmm}_aln.faa', 
+    #        zip, ani=CK.ani, cid=CK.cid, hmm=CK.hmm )
+    get_alignment_filenames
 
 rule clean :
   shell :
@@ -371,20 +395,22 @@ checkpoint write_cluster_fastas :
         for cluster_id in cids :
           clusterpath = anipath + '/' + str( cluster_id ) 
           os.mkdir( clusterpath )
+          proteinpath = clusterpath + '/proteins/'
+          os.mkdir( proteinpath )
           for hmm,seq_ids in df.filter( ( polars.col('ANI') == ANI ) & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg('seq_id').iter_rows() :
-            with open( clusterpath + '/' + hmm + '.faa', 'w' ) as f :
+            with open( proteinpath + hmm + '.faa', 'w' ) as f :
               for seq_id in seq_ids :
                 f.write( sequences[hmm][seq_id].format( 'fasta' ) )
 
 rule clustalo :
   input :
-    'prealignments/{hmm}.faa'
+    'clusters/{ck_ani}/{ck_cid}/proteins/{ck_hmm}.faa'
   output :
-    'alignments/{hmm}.msa.faa'
+    'clusters/{ck_ani}/{ck_cid}/alignments/{ck_hmm}_aln.faa'
   params :
     extra=''
   log :
-    'logs/clustalo/{hmm}.log'
+    'logs/clustalo/{ck_ani}_{ck_cid}_{ck_hmm}.log'
   threads : THREADS
   wrapper :
     'file://wrappers/clustalo'
