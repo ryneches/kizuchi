@@ -105,7 +105,7 @@ def find_links( genes1, genes2 ) :
     
     return links
 
-def get_alignment_filenames( wildcards ) :
+def get_cluster_filenames( wildcards ) :
   ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
   global CK
   CK = glob_wildcards( os.path.join( ck_output,
@@ -116,8 +116,9 @@ def get_alignment_filenames( wildcards ) :
   return expand( os.path.join( ck_output,
                                '{ck_ani}',
                                '{ck_cid}',
-                               'alignments',
-                               '{ck_hmm}_aln.faa' ),
+                               'trees',
+                               'by_taxa',
+                               '{ck_hmm}.nwk' ),
                  zip,
                  ck_ani=CK.ck_ani,
                  ck_cid=CK.ck_cid,
@@ -133,14 +134,14 @@ rule all :
     #'cluster_correlations/cluster_correlations.tsv',
     #expand( 'clusters/{ani}/{cid}/alignments/{hmm}_aln.faa', 
     #        zip, ani=CK.ani, cid=CK.cid, hmm=CK.hmm )
-    get_alignment_filenames
+    get_cluster_filenames
 
 rule clean :
   shell :
     'rm -rf proteins hmm_hits hmmdb \
         clusters\
         statistics logs\
-        preani ani ani_clusters
+        preani ani ani_clusters'
 
 rule hmmr_summary :
   input :
@@ -410,11 +411,11 @@ rule clustalo :
 
 rule trimal :
   input :
-    'alignments/{hmm}.msa.faa'
+    'clusters/{ck_ani}/{ck_cid}/alignments/{ck_hmm}_aln.faa'
   output :
-    'trimmed_alignments/{hmm}.msa.faa'
+    'clusters/{ck_ani}/{ck_cid}/trimmed_alignments/{ck_hmm}_aln.faa'
   log :
-    'logs/trimal/{hmm}.log'
+    'logs/trimal/{ck_ani}_{ck_cid}_{ck_hmm}.log'
   params :
     extra='-automated1'
   wrapper :
@@ -422,11 +423,11 @@ rule trimal :
 
 rule filter_alignments :
   input :
-    'trimmed_alignments/{hmm}.msa.faa'
+    'clusters/{ck_ani}/{ck_cid}/trimmed_alignments/{ck_hmm}_aln.faa'
   output :
-    'filtered_trimmed_alignments/{hmm}.msa.faa'
+    'clusters/{ck_ani}/{ck_cid}/filtered_trimmed_alignments/{ck_hmm}_aln.faa'
   log :
-    'logs/filter_alignments/{hmm}.log'
+    'logs/filter_alignments/{ck_ani}_{ck_cid}_{ck_hmm}.log'
   run :
     if open( input[0] ).read().count( '>' ) < 3 :
       with open( log[0], 'w' ) as f :
@@ -436,7 +437,7 @@ rule filter_alignments :
     else :
       A = AlignIO.read( input[0], 'fasta' )
       L = A.get_alignment_length()
-      B = MultipleSeqAlignment( [ s for s in A if len(s.seq.ungap())/L > AFT ] )
+      B = MultipleSeqAlignment( [ s for s in A if len(s.seq.replace('-',''))/L > AFT ] )
       with open( log[0], 'w' ) as f :
         f.write( 'aligned fraction threshold : {n}\n'.format( n=AFT ) )
         f.write( 'alignment length           : {n}\n'.format( n=L ) )
@@ -448,26 +449,13 @@ rule filter_alignments :
         else :
           f.write( '' )
 
-rule precluster :
-  input :
-    'filtered_trimmed_alignments/{hmm}.msa.faa'
-  output :
-    'precluster_sequences/{hmm}.faa'
-  log :
-    'logs/precluster/{hmm}.log'
-  run :
-    with open( output[0], 'w' ) as f :
-      for rec in parse( open( input[0] ), 'fasta' ) :
-        rec.seq = rec.seq.replace( '-', '' )
-        f.write( rec.format( 'fasta' ) )
-
 rule fasttree :
   input :
-    alignment='filtered_trimmed_alignments/{hmm}.msa.faa'
+    alignment = 'clusters/{ck_ani}/{ck_cid}/filtered_trimmed_alignments/{ck_hmm}_aln.faa'
   output :
-    tree='trees/by_gene/{hmm}.nwk'
+    tree = 'clusters/{ck_ani}/{ck_cid}/trees/by_gene/{ck_hmm}.nwk'
   log :
-    'logs/fasttree/{hmm}.log'
+    'logs/fasttree/{ck_ani}_{ck_cid}_{ck_hmm}.log'
   params :
     extra=''
   wrapper :
@@ -479,11 +467,11 @@ rule taxatrees :
   by the gene with the top-scoring HMM hit.
   '''
   input :
-    'trees/by_gene/{hmm}.nwk',
+    'clusters/{ck_ani}/{ck_cid}/trees/by_gene/{ck_hmm}.nwk',
   output :
-    'trees/by_taxa/{hmm}.nwk',
+    'clusters/{ck_ani}/{ck_cid}/trees/by_taxa/{ck_hmm}.nwk',
   log :
-    'logs/gene-taxa/{hmm}_mapping.txt',
+    'logs/gene-taxa/{ck_ani}_{ck_cid}_{ck_hmm}_mapping.txt',
   run :
     with open( log[0], 'w' ) as LOG :
       if not os.path.getsize( input[0] ) == 0 :
