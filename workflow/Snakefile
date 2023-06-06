@@ -478,9 +478,22 @@ rule taxatrees :
         T = dendropy.Tree.get( path=input[0],
                                schema='newick',
                                preserve_underscores=True )
-        drop = [ leaf.taxon.label for leaf in T.leaf_nodes() 
-                 if leaf.taxon.label.rsplit('_', 1)[1] != 'p0' ]
-        T.prune_taxa_with_labels( drop )
+        
+        # Sometimes, the paralog with the lowest e-value from hmmer
+        # doesn't make it through trimming and filtering. The paralog
+        # with the lowest hmmer e-value AFTER alignment, trimming and
+        # filtering is chosen to represent the genome in the taxa tree.
+        
+        G = defaultdict(dict)
+        
+        for leaf in T.leaf_nodes() :
+          genome,contig,gene,paralog = leaf.taxon.label.rsplit( '_', 3 )
+          G[genome][int(paralog[1:])] = leaf.taxon.label
+        
+        keep = [ G[genome][min(G[genome].keys())] for genome in G.keys() ]
+        
+        T.retain_taxa_with_labels( keep )
+
         for leaf in T.leaf_nodes() :
           taxon = leaf.taxon.label.rsplit( '_', 3 )[0]
           LOG.write( '{a}\t{b}\n'.format( a=leaf.taxon.label, b=taxon ) )
