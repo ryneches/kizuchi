@@ -18,15 +18,22 @@ from scipy.stats import kendalltau, pearsonr, skew, kurtosis
 from statistics import stdev
 from SuchTree import SuchTree, SuchLinkedTrees
 
+HMMS_DIR    = 'data/hmms-enabled'
+GENOMES_DIR = 'data/genomes-enabled'
+
 # index data inputs
-FILES1 = glob_wildcards( 'data/hmms-enabled/{hmm}.hmm' )
-FILES2 = glob_wildcards( 'data/genomes-enabled/{fasta}.fna' )
+HMM_FILES    = glob_wildcards( os.path.join( HMMS_DIR, '{hmm}.hmm' ) )
+GENOME_FILES = glob_wildcards( os.path.join( GENOMES_DIR, '{fasta}.fna' ) )
 
 # extract the {hmm} values into a list
-HMMS    = FILES1.hmm
+HMMS    = HMM_FILES.hmm
 
 # extract the {fasta} values into a list
-GENOMES = FILES2.fasta
+GENOMES = GENOME_FILES.fasta
+
+# genome fasta paths
+GENOME_PATHS = { genome : os.path.join( GENOMES_DIR, genome + '.fna' ) 
+                 for genome in GENOMES }
 
 # reference and query set for fastANI
 R = GENOMES[:len(GENOMES)//2]
@@ -111,8 +118,8 @@ def get_cluster_filenames( wildcards ) :
   CK = glob_wildcards( os.path.join( ck_output,
                                      '{ck_ani}',
                                      '{ck_cid}',
-                                     'proteins',
-                                     '{ck_hmm}.faa' ) )
+                                     'genes',
+                                     '{ck_hmm}.fna' ) )
   return expand( os.path.join( ck_output,
                                '{ck_ani}',
                                '{ck_cid}',
@@ -138,9 +145,9 @@ rule all :
 
 rule clean :
   shell :
-    'rm -rf proteins hmm_hits hmmdb \
-        preani ani ani_clusters \
-        clusters statistics logs'
+    'rm -rf proteins genes hmm_hits hmmdb \
+        preani ani ani_clusters scored_proteins \
+        cluster_filtering clusters statistics logs'
 
 rule hmmr_summary :
   input :
@@ -199,12 +206,12 @@ rule prodigal :
     fna='data/genomes-enabled/{fasta}.fna', 
   output :
     faa='proteins/{fasta}_genes.faa',
-    #fna='proteins/{fasta}_genes.fna',
+    fna='genes/{fasta}_genes.fna',
     #gff='proteins/{fasta}_genes.gff',
   log :
     'logs/prodigal/{fasta}.log',
   params :
-    extra='',  # Additional arguments
+    extra='',
   wrapper :
     'file://wrappers/prodigal-gv'
 
@@ -450,19 +457,20 @@ rule cluster_filtering :
 checkpoint write_cluster_fastas :
   input :
     cluster_table = 'cluster_filtering/clusters.tsv',
-    prealignments = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS ),
+    genes         = expand( 'genes/{fasta}_genes.fna', fasta=GENOMES )
   output :
     clusters = directory( 'clusters' )
   log :
-    'write_cluster_fastas/write_cluster_fastas.log'
+    'logs/write_cluster_fastas/write_cluster_fastas.log'
   run :
     with open( log[0], 'w' ) as LOG :
       LOG.write( 'loading sequences...\n' )
-      sequences = { Path(fasta).stem : { rec.id : rec for rec in parse( open( fasta ), 'fasta' ) } 
-                    for fasta in input.prealignments }
- 
-      for hmm in sequences.keys() :
-        LOG.write( '{hmm} : {n}\n'.format( hmm=hmm, n=len(sequences[hmm]) ) )
+      geneseqs = { Path(fasta).stem.rsplit('_',1)[0] : { rec.id : rec
+                                        for rec in parse( open( fasta ), 'fasta' ) }
+                   for fasta in input.genes }
+      
+      for genome in geneseqs.keys() :
+        LOG.write( '{genome} : {n}\n'.format( genome=genome, n=len(geneseqs[genome]) ) )
  
       LOG.write( 'loading cluster table...\n' )
       df = polars.read_csv( input.cluster_table, sep='\t' )
@@ -475,18 +483,21 @@ checkpoint write_cluster_fastas :
         for cluster_id in cids :
           clusterpath = anipath + '/' + str( cluster_id ) 
           os.mkdir( clusterpath )
-          proteinpath = clusterpath + '/proteins/'
-          os.mkdir( proteinpath )
-          for hmm,seq_ids in df.filter( ( polars.col('ANI') == ANI ) & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg('seq_id').iter_rows() :
-            with open( proteinpath + hmm + '.faa', 'w' ) as f :
-              for seq_id in seq_ids :
-                f.write( sequences[hmm][seq_id].format( 'fasta' ) )
+          genepath = clusterpath + '/genes/'
+          os.mkdir( genepath )
+          for hmm,seq_ids,genomes in df.filter( ( polars.col('ANI') == ANI ) & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
+            with open( genepath + hmm + '.fna', 'w' ) as f :
+              for seq_id,genome in zip( seq_ids, genomes ) :
+                orig_seq_id = seq_id.rsplit('_',1)[0] # remove hmmer evalue rank
+                seq = geneseqs[genome][orig_seq_id] 
+                seq.id = seq_id
+                f.write( seq.format( 'fasta' ) )
 
 rule clustalo :
   input :
-    'clusters/{ck_ani}/{ck_cid}/proteins/{ck_hmm}.faa'
+    'clusters/{ck_ani}/{ck_cid}/genes/{ck_hmm}.fna'
   output :
-    'clusters/{ck_ani}/{ck_cid}/alignments/{ck_hmm}_aln.faa'
+    'clusters/{ck_ani}/{ck_cid}/alignments/{ck_hmm}_aln.fna'
   params :
     extra=''
   log :
@@ -497,9 +508,9 @@ rule clustalo :
 
 rule trimal :
   input :
-    'clusters/{ck_ani}/{ck_cid}/alignments/{ck_hmm}_aln.faa'
+    'clusters/{ck_ani}/{ck_cid}/alignments/{ck_hmm}_aln.fna'
   output :
-    'clusters/{ck_ani}/{ck_cid}/trimmed_alignments/{ck_hmm}_aln.faa'
+    'clusters/{ck_ani}/{ck_cid}/trimmed_alignments/{ck_hmm}_aln.fna'
   log :
     'logs/trimal/{ck_ani}_{ck_cid}_{ck_hmm}.log'
   params :
@@ -509,9 +520,9 @@ rule trimal :
 
 rule filter_alignments :
   input :
-    'clusters/{ck_ani}/{ck_cid}/trimmed_alignments/{ck_hmm}_aln.faa'
+    'clusters/{ck_ani}/{ck_cid}/trimmed_alignments/{ck_hmm}_aln.fna'
   output :
-    'clusters/{ck_ani}/{ck_cid}/filtered_trimmed_alignments/{ck_hmm}_aln.faa'
+    'clusters/{ck_ani}/{ck_cid}/filtered_trimmed_alignments/{ck_hmm}_aln.fna'
   log :
     'logs/filter_alignments/{ck_ani}_{ck_cid}_{ck_hmm}.log'
   run :
@@ -537,7 +548,7 @@ rule filter_alignments :
 
 rule fasttree :
   input :
-    alignment = 'clusters/{ck_ani}/{ck_cid}/filtered_trimmed_alignments/{ck_hmm}_aln.faa'
+    alignment = 'clusters/{ck_ani}/{ck_cid}/filtered_trimmed_alignments/{ck_hmm}_aln.fna'
   output :
     tree = 'clusters/{ck_ani}/{ck_cid}/trees/by_gene/{ck_hmm}.nwk'
   log :

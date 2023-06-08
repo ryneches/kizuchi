@@ -7,8 +7,8 @@ __license__   = "MIT"
 from snakemake.shell import shell
 import os
 
-log = snakemake.log_fmt_shell(stdout=False, stderr=True)
-extra = snakemake.params.get("extra", "")
+log = snakemake.log_fmt_shell( stdout=False, stderr=True )
+extra = snakemake.params.get( 'extra', '' )
 
 gff = snakemake.output.get( 'gff' )
 if not gff :
@@ -16,7 +16,7 @@ if not gff :
 
 fna = snakemake.output.get( 'fna' )
 if fna :
-    fna = '-d' + fna
+    fna = '-d ' + fna
 else :
     fna = ''
 
