@@ -60,6 +60,11 @@ ANI_THRESHOLDS = linspace( 75, 99, 25 )
 # minimum number of links per cluster for tree correlation
 MIN_CLUSTER_LINKS = 5
 
+# degenerate tree threshold : exclude pairwise tree-to-tree
+# comparisons where the ratio of non-unique leaf-to-leaf
+# distances exceeds this threshold
+DEGEN_THRESHOLD = 0.5
+
 # borrowed from CheckV
 def parse_hmmsearch( path ) :
   with open(path) as f:
@@ -131,6 +136,22 @@ def get_cluster_filenames( wildcards ) :
                  ck_cid=CK.ck_cid,
                  ck_hmm=CK.ck_hmm )
 
+def get_cluster_data( wildcards ) :
+  ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
+  global CK
+  CK = glob_wildcards( os.path.join( ck_output,
+                                     '{ck_ani}',
+                                     '{ck_cid}',
+                                     'genes',
+                                     '{ck_hmm}.fna' ) )
+  return expand( os.path.join( ck_output,
+                               '{ck_ani}',
+                               '{ck_cid}',
+                               'data.tsv' ),
+                 zip, 
+                 ck_ani=CK.ck_ani,
+                 ck_cid=CK.ck_cid )
+
 rule all :
   input :
     #expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
@@ -141,7 +162,8 @@ rule all :
     #'cluster_correlations/cluster_correlations.tsv',
     #expand( 'clusters/{ani}/{cid}/alignments/{hmm}_aln.faa', 
     #        zip, ani=CK.ani, cid=CK.cid, hmm=CK.hmm )
-    get_cluster_filenames
+    #get_cluster_filenames
+    get_cluster_data
 
 rule clean :
   shell :
@@ -478,12 +500,12 @@ checkpoint write_cluster_fastas :
 
       os.mkdir( output.clusters )
       for ANI,cids in df.groupby('ANI').agg( polars.col('cid').unique() ).sort('ANI').iter_rows() :
-        anipath = output.clusters + '/' + str(ANI) 
+        anipath = os.path.join( output.clusters, str(ANI) )
         os.mkdir( anipath )
         for cluster_id in cids :
-          clusterpath = anipath + '/' + str( cluster_id ) 
+          clusterpath = os.path.join( anipath, str( cluster_id ) )
           os.mkdir( clusterpath )
-          genepath = clusterpath + '/genes/'
+          genepath = os.path.join( clusterpath, 'genes' )
           os.mkdir( genepath )
           for hmm,seq_ids,genomes in df.filter( ( polars.col('ANI') == ANI ) & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
             with open( genepath + hmm + '.fna', 'w' ) as f :
@@ -599,6 +621,89 @@ rule taxatrees :
                  schema='newick' )
       else :
         open( output[0], 'w' ).close()
+
+rule clusterdata :
+  input :
+    trees = expand( 'clusters/{ck_ani}/{ck_cid}/trees/by_gene/{ck_hmm}.nwk', ck_hmm=CK.ck_hmm )
+  output :
+    table = 'clusters/{ck_ani}/{ck_cid}/data.tsv'
+  params :
+    ani   = '{ck_ani}',
+    cid   = '{ck_cid}',
+  log :
+    'logs/clusterdata/{ck_ani}_{ck_cid}.log'
+  run :
+    with open( log[0], 'w' ) as LOG :
+      
+      LOG.write( 'ANI        : {ani}\n'.format( ani=params.ani ) )
+      LOG.write( 'cluster ID : {cid}\n'.format( cid=params.cid ) )
+      
+      data = []
+      
+      for treefile1, treefile2 in combinations( input.trees, 2 ) :
+        hmm1_name = Path( treefile1 ).stem.rsplit( '.', 1 )[0]
+        hmm2_name = Path( treefile2 ).stem.rsplit( '.', 1 )[0]
+        
+        LOG.write( 'loading {g1} and {g2}...\n'.format( g1=hmm1_name, g2=hmm2_name ) )
+        
+        T1 = SuchTree( treefile1 )
+        T2 = SuchTree( treefile2 )
+        links = find_links( T1, T2 )
+        
+        LOG.write( '    {g1} size : {n}\n'.format( g1=hmm1_name, n=len(T1) ) )
+        LOG.write( '    {g2} size : {n}\n'.format( g2=hmm2_name, n=len(T2) ) )
+        LOG.write( '    links     : {n}\n'.format( n=len(links) ) )
+        
+        hmm1_pairs = []
+        hmm2_pairs = []
+        
+        for (t1a,t2a),(t1b,t2b) in combinations( links, 2 ) :
+          hmm1_pairs.append( ( t1a, t1b ) )
+          hmm2_pairs.append( ( t2a, t2b ) )
+        
+        hmm1_distances = T1.distances_by_name( gene1_pairs )
+        hmm2_distances = T2.distances_by_name( gene2_pairs )
+        
+        LOG.write( 'computed {n} distances.'.format( n=str( len( hmm1_distances ) ) ) )
+        
+        # skip degenerate trees
+        if len( unique( hmm1_distances ) ) / len( hmm1_distances ) < DEGEN_THRESHOLD :
+          LOG.write( '{g1} is degenerate, skipping.'.format( g1=hmm1_name ) )
+          continue
+        if len( unique( hmm2_distances ) ) / len( hmm2_distances ) < DEGEN_THRESHOLD :
+          LOG.write( '{g2} is degenerate, skipping.'.format( g2=hmm2_name ) )
+          continue
+        
+        hmm1_skew = skew( hmm1_distances )
+        hmm2_skew = skew( hmm2_distances )
+        
+        hmm1_kurtosis = kurtosis( hmm1_distances )
+        hmm2_kurtosis = kurtosis( hmm2_distances )
+         
+        hmm1_stdev = stdev( hmm1_distances )
+        hmm2_stdev = stdev( hmm2_distances )
+         
+        r,pr = pearsonr(   hmm1_distances, hmm2_distances )
+        t,pt = kendalltau( hmm1_distances, hmm2_distances )
+            
+        data.append(  { 'hmm1'          : hmm1_name,
+                        'hmm2'          : hmm2_name,
+                        'links'         : len(c),
+                        'hmm1_skew'     : hmm1_skew,
+                        'hmm2_skew'     : hmm2_skew,
+                        'hmm1_kurtosis' : hmm1_kurtosis,
+                        'hmm2_kurtosis' : hmm2_kurtosis,
+                        'hmm1_stdev'    : hmm1_stdev,
+                        'hmm2_stdev'    : hmm2_stdev,
+                        'r'             : r,
+                        'pr'            : pr,
+                        'tau'           : t,
+                        'p_tau'         : pt,
+                        'cluster'       : int( params.cid ),
+                        'ANI'           : float( params.ani) } )
+      
+      LOG.write( 'writing records for {n} correlations...\n'.format( len( data ) ) )
+      polars.DataFrame( data ).to_csv( output[0], sep='\t', index=False )
 
 rule clusterlinks :
   input :
