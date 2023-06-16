@@ -128,9 +128,8 @@ def get_cluster_filenames( wildcards ) :
   return expand( os.path.join( ck_output,
                                '{ck_ani}',
                                '{ck_cid}',
-                               'trees',
-                               'by_taxa',
-                               '{ck_hmm}.nwk' ),
+                               'genes',
+                               '{ck_hmm}.fna' ),
                  zip,
                  ck_ani=CK.ck_ani,
                  ck_cid=CK.ck_cid,
@@ -517,7 +516,7 @@ checkpoint write_cluster_fastas :
 
 rule clustalo :
   input :
-    'clusters/{ck_ani}/{ck_cid}/genes/{ck_hmm}.fna'
+    get_cluster_filenames
   output :
     'clusters/{ck_ani}/{ck_cid}/alignments/{ck_hmm}_aln.fna'
   params :
