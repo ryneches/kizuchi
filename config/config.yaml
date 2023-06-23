@@ -6,10 +6,13 @@ channels:
 dependencies:
   - numpy
   - scipy
+  - biopython
   - pandas
-  - cluastalo
+  - polars
+  - clustalo
   - cd-hit
   - hmmer
+  - snakemake
   - prodigal-gv
   - fasttree
   - fastani
@@ -20,3 +23,4 @@ dependencies:
     - dendropy
     - hmm-profile
     - cdhit-reader
+    - hmm_profile

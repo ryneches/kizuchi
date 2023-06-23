@@ -43,9 +43,9 @@ Q = GENOMES[len(GENOMES)//2:]
 HMMS1,HMMS2 = list( zip( *combinations( HMMS, 2 ) ) )
 
 # cluster checkpoint wildcards
-CKANIS = None
-CKCIDS = None
-CKHMMS = None
+#CKANIS = None
+#CKCIDS = None
+#CKHMMS = None
 
 # e-value threshold for HMM search
 EVALUE = 10e-3
@@ -119,7 +119,7 @@ def find_links( genes1, genes2 ) :
     
     return links
 
-def get_cluster_filenames( wildcards ) :
+def get_cluster_trees( wildcards ) :
   ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
   global CKANIS, CKCIDS, CKHMMS
   CK = glob_wildcards( os.path.join( ck_output,
@@ -131,22 +131,23 @@ def get_cluster_filenames( wildcards ) :
   CKCIDS = CK.cid
   CKHMMS = CK.ckhmm
   
-  print( 'CK :' )
-  print( CK )
-  
-  return expand( os.path.join( ck_output,
-                               '{ani}',
-                               '{cid}',
-                               'genes',
-                               '{ckhmm}.fna' ),
+  A = expand( os.path.join( ck_output,
+                               '{{ani}}',
+                               '{{cid}}',
+                               'trees',
+                               'by_gene',
+                               '{ckhmm}.nwk' ),
                  zip,
                  ani=CKANIS,
                  cid=CKCIDS,
                  ckhmm=CKHMMS )
+  
+  #print( 'get_cluster_trees :', A )
+  return A
 
 def get_cluster_data( wildcards ) :
   ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
-  global CKANIS, CKCIDS, CKHMMS
+  #global CKANIS, CKCIDS, CKHMMS
   CK = glob_wildcards( os.path.join( ck_output,
                                      '{ani}',
                                      '{cid}',
@@ -155,16 +156,17 @@ def get_cluster_data( wildcards ) :
   CKANIS = CK.ani
   CKCIDS = CK.cid
   CKHMMS = CK.ckhmm
- 
-  print( CKANIS )
-
-  return expand( os.path.join( ck_output,
+  
+  A = expand( os.path.join( ck_output,
                                '{ani}',
                                '{cid}',
                                'data.tsv' ),
                  zip,
                  ani=CKANIS,
                  cid=CKCIDS )
+  
+  #print('get_cluster_data :', A)
+  return A
 
 rule all :
   input :
@@ -178,7 +180,6 @@ rule all :
     #        zip, ani=CK.ani, cid=CK.cid, hmm=CK.hmm )
     #get_cluster_filenames
     get_cluster_data
-    #expand( 'clusters/{ck_ani}/{ck_cid}/data.tsv', zip, ck_ani=CK.ck_ani, ck_cid=CK.ck_cid )
 
 rule clean :
   shell :
@@ -497,7 +498,6 @@ checkpoint write_cluster_fastas :
     genes         = expand( 'genes/{fasta}_genes.fna', fasta=GENOMES )
   output :
     clusters = directory( 'clusters' )
-    #clusters = expand( 'clusters/{ani}/{cid}/genes/{ckhmm}.fna', ani=CKANIS, cid=CKCIDS, ckhmm=CKHMMS )
   log :
     'logs/write_cluster_fastas/write_cluster_fastas.log'
   run :
@@ -533,7 +533,6 @@ checkpoint write_cluster_fastas :
 
 rule clustalo :
   input :
-    #get_cluster_filenames
     'clusters/{ani}/{cid}/genes/{ckhmm}.fna'
   output :
     'clusters/{ani}/{cid}/alignments/{ckhmm}_aln.fna'
@@ -641,7 +640,8 @@ rule taxatrees :
 
 rule clusterdata :
   input :
-    trees = expand( 'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk', ani=CKANIS, cid=CKCIDS, ckhmm=CKHMMS )
+    #trees = expand( 'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk' )
+    trees = get_cluster_trees
   output :
     table = 'clusters/{ani}/{cid}/data.tsv'
   params :
