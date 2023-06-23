@@ -155,6 +155,8 @@ def get_cluster_data( wildcards ) :
   CKANIS = CK.ani
   CKCIDS = CK.cid
   CKHMMS = CK.ckhmm
+ 
+  print( CKANIS )
 
   return expand( os.path.join( ck_output,
                                '{ani}',
@@ -495,6 +497,7 @@ checkpoint write_cluster_fastas :
     genes         = expand( 'genes/{fasta}_genes.fna', fasta=GENOMES )
   output :
     clusters = directory( 'clusters' )
+    #clusters = expand( 'clusters/{ani}/{cid}/genes/{ckhmm}.fna', ani=CKANIS, cid=CKCIDS, ckhmm=CKHMMS )
   log :
     'logs/write_cluster_fastas/write_cluster_fastas.log'
   run :
@@ -511,15 +514,15 @@ checkpoint write_cluster_fastas :
       df = polars.read_csv( input.cluster_table, sep='\t' )
       LOG.write( 'found {n} clusters.\n'.format( n=len( df.groupby('id').agg('seq_id') ) ) )
 
-      os.mkdir( output.clusters )
+      if not os.path.exists( 'clusters' ) : os.mkdir( 'clusters' )
       for ANI,cids in df.groupby('ANI').agg( polars.col('cid').unique() ).sort('ANI').iter_rows() :
-        anipath = os.path.join( output.clusters, str(ANI) )
-        os.mkdir( anipath )
+        anipath = os.path.join( 'clusters', str(ANI) )
+        if not os.path.exists( anipath) : os.mkdir( anipath )
         for cluster_id in cids :
           clusterpath = os.path.join( anipath, str( cluster_id ) )
-          os.mkdir( clusterpath )
+          if not os.path.exists( clusterpath ) : os.mkdir( clusterpath )
           genepath = os.path.join( clusterpath, 'genes' )
-          os.mkdir( genepath )
+          if not os.path.exists( genepath ) : os.mkdir( genepath )
           for hmm,seq_ids,genomes in df.filter( ( polars.col('ANI') == ANI ) & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
             with open( os.path.join( genepath, hmm + '.fna' ), 'w' ) as f :
               for seq_id,genome in zip( seq_ids, genomes ) :
@@ -527,17 +530,6 @@ checkpoint write_cluster_fastas :
                 seq = geneseqs[genome][orig_seq_id] 
                 seq.id = seq_id
                 f.write( seq.format( 'fasta' ) )
-
-rule postcheck :
-  input :
-    get_cluster_filenames
-  log :
-    'logs/postcheck/{ani}_{cid}_{ckhmm}.log'
-  run :
-    with open( log[0], 'w' ) as LOG :
-      for filename in input[0] :
-        n = len( [ rec for rec in parse( open( filename ), 'fasta' ) ] )
-        LOG.write( '{f} : {n}\n'.format( f=filename, n=n ) )
 
 rule clustalo :
   input :
