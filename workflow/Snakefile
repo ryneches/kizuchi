@@ -511,7 +511,7 @@ checkpoint write_cluster_fastas :
         LOG.write( '{genome} : {n}\n'.format( genome=genome, n=len(geneseqs[genome]) ) )
  
       LOG.write( 'loading cluster table...\n' )
-      df = polars.read_csv( input.cluster_table, sep='\t' )
+      df = polars.read_csv( input.cluster_table, separator='\t' )
       LOG.write( 'found {n} clusters.\n'.format( n=len( df.groupby('id').agg('seq_id') ) ) )
 
       if not os.path.exists( 'clusters' ) : os.mkdir( 'clusters' )
