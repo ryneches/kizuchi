@@ -119,7 +119,7 @@ def find_links( genes1, genes2 ) :
     
     return links
 
-def get_cluster_alignments( wildcards ) :
+def get_cluster_trees( wildcards ) :
   ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
   global CKANIS, CKCIDS, CKHMMS
   CK = glob_wildcards( os.path.join( ck_output,
@@ -131,19 +131,23 @@ def get_cluster_alignments( wildcards ) :
   CKCIDS = CK.cid
   CKHMMS = CK.ckhmm
   
-  return expand( os.path.join( ck_output,
+  A = expand( os.path.join( ck_output,
                                '{{ani}}',
                                '{{cid}}',
-                               'filtered_trimmed_alignments',
-                               '{{ckhmm}}.nwk' ),
+                               'trees',
+                               'by_gene',
+                               '{ckhmm}.nwk' ),
                  zip,
                  ani=CKANIS,
                  cid=CKCIDS,
                  ckhmm=CKHMMS )
   
+  #print( 'get_cluster_trees :', A )
+  return A
+
 def get_cluster_data( wildcards ) :
   ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
-  global CKANIS, CKCIDS, CKHMMS
+  #global CKANIS, CKCIDS, CKHMMS
   CK = glob_wildcards( os.path.join( ck_output,
                                      '{ani}',
                                      '{cid}',
@@ -582,8 +586,7 @@ rule filter_alignments :
 
 rule fasttree :
   input :
-    #alignment = 'clusters/{ani}/{cid}/filtered_trimmed_alignments/{ckhmm}_aln.fna'
-    get_cluster_alignments
+    alignment = 'clusters/{ani}/{cid}/filtered_trimmed_alignments/{ckhmm}_aln.fna'
   output :
     tree = 'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk'
   log :
@@ -600,7 +603,6 @@ rule taxatrees :
   '''
   input :
     'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk',
-    #get_cluster_trees
   output :
     'clusters/{ani}/{cid}/trees/by_taxa/{ckhmm}.nwk',
   log :
@@ -638,8 +640,8 @@ rule taxatrees :
 
 rule clusterdata :
   input :
-    trees = expand( 'clusters/{{ani}}/{{cid}}/trees/by_gene/{ckhmm}.nwk', ckhmm=CKHMMS )
-    #trees = get_cluster_trees
+    #trees = expand( 'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk' )
+    trees = get_cluster_trees
   output :
     table = 'clusters/{ani}/{cid}/data.tsv'
   params :
@@ -649,8 +651,6 @@ rule clusterdata :
     'logs/clusterdata/{ani}_{cid}.log'
   run :
     with open( log[0], 'w' ) as LOG :
-
-      LOG.write( 'trees :', input.trees )
       
       LOG.write( 'ANI        : {ani}\n'.format( ani=params.ani ) )
       LOG.write( 'cluster ID : {cid}\n'.format( cid=params.cid ) )
