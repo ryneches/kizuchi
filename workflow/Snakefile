@@ -131,20 +131,16 @@ def get_cluster_trees( wildcards ) :
   CKCIDS = CK.cid
   CKHMMS = CK.ckhmm
   
-  A = expand( os.path.join( ck_output,
+  return expand( os.path.join( ck_output,
                                '{{ani}}',
                                '{{cid}}',
                                'trees',
                                'by_gene',
                                '{ckhmm}.nwk' ),
-                 zip,
                  ani=CKANIS,
                  cid=CKCIDS,
                  ckhmm=CKHMMS )
   
-  #print( 'get_cluster_trees :', A )
-  return A
-
 def get_cluster_data( wildcards ) :
   ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
   #global CKANIS, CKCIDS, CKHMMS
@@ -157,7 +153,7 @@ def get_cluster_data( wildcards ) :
   CKCIDS = CK.cid
   CKHMMS = CK.ckhmm
   
-  A = expand( os.path.join( ck_output,
+  return expand( os.path.join( ck_output,
                                '{ani}',
                                '{cid}',
                                'data.tsv' ),
@@ -165,9 +161,6 @@ def get_cluster_data( wildcards ) :
                  ani=CKANIS,
                  cid=CKCIDS )
   
-  #print('get_cluster_data :', A)
-  return A
-
 rule all :
   input :
     #expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
@@ -523,13 +516,46 @@ checkpoint write_cluster_fastas :
           if not os.path.exists( clusterpath ) : os.mkdir( clusterpath )
           genepath = os.path.join( clusterpath, 'genes' )
           if not os.path.exists( genepath ) : os.mkdir( genepath )
+          hmms_written = set() # FIXME : workaround for post-checkpoint wildcard matching
           for hmm,seq_ids,genomes in df.filter( ( polars.col('ANI') == ANI ) & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
+            hmms_written.add( hmm ) # FIXME : workaround for post-checkpoint wildcard matching
             with open( os.path.join( genepath, hmm + '.fna' ), 'w' ) as f :
               for seq_id,genome in zip( seq_ids, genomes ) :
                 orig_seq_id = seq_id.rsplit('_',1)[0] # remove hmmer evalue rank
                 seq = geneseqs[genome][orig_seq_id] 
                 seq.id = seq_id
                 f.write( seq.format( 'fasta' ) )
+          for hmm in set( df.get_column( 'hmm' ) ) - hmms_written :
+            # FIXME : workaround for post-checkpoint wildcard matching.
+            #         Snakemake wants to do a Cartesian product on wildcards
+            #         instead of using the files that actually exist. This
+            #         should be fixable, but for now we will use empty sentinel
+            #         files for the genes that don't exist in each cluster
+            with open( os.path.join( genepath, hmm + '.fna' ), 'w' ) as f :
+              f.write('')
+
+            alnpath = os.path.join( clusterpath, 'alignments' )
+            if not os.path.exists( alnpath ) : os.mkdir( alnpath )
+            with open( os.path.join( alnpath, hmm + '_aln.fna' ), 'w' ) as f :
+              f.write('')
+            
+            trimpath = os.path.join( clusterpath, 'trimmed_alignments' )
+            if not os.path.exists( trimpath ) : os.mkdir( trimpath )
+            with open( os.path.join( trimpath, hmm + '_aln.fna' ), 'w' ) as f :
+              f.write('')
+            
+            filterpath = os.path.join( clusterpath, 'filtered_trimmed_alignments' )
+            if not os.path.exists( filterpath ) : os.mkdir( filterpath )
+            with open( os.path.join( filterpath, hmm + '_aln.fna' ), 'w' ) as f :
+              f.write('')
+            
+            treepath0 = os.path.join( clusterpath, 'trees' )
+            if not os.path.exists( treepath0 ) : os.mkdir( treepath0 )
+            treepath1 = os.path.join( treepath0, 'by_gene' )
+            if not os.path.exists( treepath1 ) : os.mkdir( treepath1 )
+            with open( os.path.join( treepath1, hmm + '.nwk' ), 'w' ) as f :
+              f.write('')
+          
 
 rule clustalo :
   input :
@@ -652,12 +678,25 @@ rule clusterdata :
   run :
     with open( log[0], 'w' ) as LOG :
       
+      # FIXME : hack to get around incorrect expansion of post-checkpoint wildcards
+      trees = set( input.trees )
+      
       LOG.write( 'ANI        : {ani}\n'.format( ani=params.ani ) )
       LOG.write( 'cluster ID : {cid}\n'.format( cid=params.cid ) )
       
+      LOG.write( 'input trees :\n' )
+      for treefile in trees :
+        if os.stat( treefile ).st_size > 0 : 
+          LOG.write( '    {f}\n'.format( f=treefile ) )
+      
       data = []
       
-      for treefile1, treefile2 in combinations( input.trees, 2 ) :
+      for treefile1, treefile2 in combinations( trees, 2 ) :
+        
+        # if either treefile is an empty sentilel file, skip the calculations
+        if os.stat( treefile1 ).st_size == 0 : continue
+        if os.stat( treefile2 ).st_size == 0 : continue
+        
         hmm1_name = Path( treefile1 ).stem.rsplit( '.', 1 )[0]
         hmm2_name = Path( treefile2 ).stem.rsplit( '.', 1 )[0]
         
@@ -665,11 +704,17 @@ rule clusterdata :
         
         T1 = SuchTree( treefile1 )
         T2 = SuchTree( treefile2 )
-        links = find_links( T1, T2 )
+        links = find_links( list( T1.leafs.keys() ), list( T2.leafs.keys() ) )
         
-        LOG.write( '    {g1} size : {n}\n'.format( g1=hmm1_name, n=len(T1) ) )
-        LOG.write( '    {g2} size : {n}\n'.format( g2=hmm2_name, n=len(T2) ) )
-        LOG.write( '    links     : {n}\n'.format( n=len(links) ) )
+        LOG.write( '    {g1} : {n} leafs\n'.format( g1=hmm1_name, n=T1.n_leafs ) )
+        LOG.write( '    {g2} : {n} leafs\n'.format( g2=hmm2_name, n=T2.n_leafs ) )
+        LOG.write( '    links : {n}\n'.format( n=len(links) ) )
+        
+        # some clusters may have lost enough members during trimming and filtering
+        # that they no longer meet the link threshold
+        if len(links) < MIN_CLUSTER_LINKS :
+          LOG.write( 'gene pair is below minimum link threshold; aborting.\n' )
+          continue
         
         hmm1_pairs = []
         hmm2_pairs = []
@@ -678,17 +723,17 @@ rule clusterdata :
           hmm1_pairs.append( ( t1a, t1b ) )
           hmm2_pairs.append( ( t2a, t2b ) )
         
-        hmm1_distances = T1.distances_by_name( gene1_pairs )
-        hmm2_distances = T2.distances_by_name( gene2_pairs )
+        hmm1_distances = T1.distances_by_name( hmm1_pairs )
+        hmm2_distances = T2.distances_by_name( hmm2_pairs )
         
-        LOG.write( 'computed {n} distances.'.format( n=str( len( hmm1_distances ) ) ) )
+        LOG.write( '    computed {n} distances.\n'.format( n=str( len( hmm1_distances ) ) ) )
         
         # skip degenerate trees
         if len( unique( hmm1_distances ) ) / len( hmm1_distances ) < DEGEN_THRESHOLD :
-          LOG.write( '{g1} is degenerate, skipping.'.format( g1=hmm1_name ) )
+          LOG.write( '    {g1} is degenerate, skipping.\n'.format( g1=hmm1_name ) )
           continue
         if len( unique( hmm2_distances ) ) / len( hmm2_distances ) < DEGEN_THRESHOLD :
-          LOG.write( '{g2} is degenerate, skipping.'.format( g2=hmm2_name ) )
+          LOG.write( '    {g2} is degenerate, skipping.\n'.format( g2=hmm2_name ) )
           continue
         
         hmm1_skew = skew( hmm1_distances )
@@ -705,7 +750,7 @@ rule clusterdata :
             
         data.append(  { 'hmm1'          : hmm1_name,
                         'hmm2'          : hmm2_name,
-                        'links'         : len(c),
+                        'links'         : len(links),
                         'hmm1_skew'     : hmm1_skew,
                         'hmm2_skew'     : hmm2_skew,
                         'hmm1_kurtosis' : hmm1_kurtosis,
@@ -719,5 +764,8 @@ rule clusterdata :
                         'cluster'       : int( params.cid ),
                         'ANI'           : float( params.ani) } )
       
-      LOG.write( 'writing records for {n} correlations...\n'.format( n=len( data ) ) )
-      polars.DataFrame( data ).write_csv( file=output[0], sep='\t' )
+      if data :
+        LOG.write( 'writing records for {n} correlations...\n'.format( n=len( data ) ) )
+        polars.DataFrame( data ).write_csv( file=output[0], separator='\t' )
+      else :
+        LOG.write( 'no gene pairs exceed minimum link threshold, aborting.\n' )
