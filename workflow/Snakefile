@@ -167,46 +167,40 @@ def find_links( genes1, genes2 ) :
     return links
 
 def get_cluster_trees( wildcards ) :
+
   ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
-  global CKANIS, CKCIDS, CKHMMS
+  
   CK = glob_wildcards( os.path.join( ck_output,
-                                     '{ani}',
-                                     '{cid}',
+                                     wildcards.ani,
+                                     wildcards.cid,
                                      'genes',
                                      '{ckhmm}.fna' ) )
-  CKANIS = CK.ani
-  CKCIDS = CK.cid
-  CKHMMS = CK.ckhmm
   
   return expand( os.path.join( ck_output,
-                               '{{ani}}',
-                               '{{cid}}',
+                               wildcards.ani,
+                               wildcards.cid,
                                'trees',
                                'by_gene',
                                '{ckhmm}.nwk' ),
-                 ani=CKANIS,
-                 cid=CKCIDS,
-                 ckhmm=CKHMMS )
+                 ckhmm=CK.ckhmm )
   
 def get_cluster_data( wildcards ) :
+  
   ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
-  #global CKANIS, CKCIDS, CKHMMS
+  
   CK = glob_wildcards( os.path.join( ck_output,
                                      '{ani}',
                                      '{cid}',
                                      'genes',
                                      '{ckhmm}.fna' ) )
-  CKANIS = CK.ani
-  CKCIDS = CK.cid
-  CKHMMS = CK.ckhmm
   
   return expand( os.path.join( ck_output,
                                '{ani}',
                                '{cid}',
                                'data.tsv' ),
                  zip,
-                 ani=CKANIS,
-                 cid=CKCIDS )
+                 ani=CK.ani,
+                 cid=CK.cid )
   
 rule all :
   input :
@@ -572,37 +566,6 @@ checkpoint write_cluster_fastas :
                 seq = geneseqs[genome][orig_seq_id] 
                 seq.id = seq_id
                 f.write( seq.format( 'fasta' ) )
-          for hmm in set( df.get_column( 'hmm' ) ) - hmms_written :
-            # FIXME : workaround for post-checkpoint wildcard matching.
-            #         Snakemake wants to do a Cartesian product on wildcards
-            #         instead of using the files that actually exist. This
-            #         should be fixable, but for now we will use empty sentinel
-            #         files for the genes that don't exist in each cluster
-            with open( os.path.join( genepath, hmm + '.fna' ), 'w' ) as f :
-              f.write('')
-
-            alnpath = os.path.join( clusterpath, 'alignments' )
-            if not os.path.exists( alnpath ) : os.mkdir( alnpath )
-            with open( os.path.join( alnpath, hmm + '_aln.fna' ), 'w' ) as f :
-              f.write('')
-            
-            trimpath = os.path.join( clusterpath, 'trimmed_alignments' )
-            if not os.path.exists( trimpath ) : os.mkdir( trimpath )
-            with open( os.path.join( trimpath, hmm + '_aln.fna' ), 'w' ) as f :
-              f.write('')
-            
-            filterpath = os.path.join( clusterpath, 'filtered_trimmed_alignments' )
-            if not os.path.exists( filterpath ) : os.mkdir( filterpath )
-            with open( os.path.join( filterpath, hmm + '_aln.fna' ), 'w' ) as f :
-              f.write('')
-            
-            treepath0 = os.path.join( clusterpath, 'trees' )
-            if not os.path.exists( treepath0 ) : os.mkdir( treepath0 )
-            treepath1 = os.path.join( treepath0, 'by_gene' )
-            if not os.path.exists( treepath1 ) : os.mkdir( treepath1 )
-            with open( os.path.join( treepath1, hmm + '.nwk' ), 'w' ) as f :
-              f.write('')
-          
 
 rule clustalo :
   input :
@@ -713,7 +676,6 @@ rule taxatrees :
 
 rule clusterdata :
   input :
-    #trees = expand( 'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk' )
     trees = get_cluster_trees
   output :
     table = 'clusters/{ani}/{cid}/data.tsv'
@@ -724,21 +686,17 @@ rule clusterdata :
     'logs/clusterdata/{ani}_{cid}.log'
   run :
     with open( log[0], 'w' ) as LOG :
-      
-      # FIXME : hack to get around incorrect expansion of post-checkpoint wildcards
-      trees = set( input.trees )
-      
+       
       LOG.write( 'ANI        : {ani}\n'.format( ani=params.ani ) )
       LOG.write( 'cluster ID : {cid}\n'.format( cid=params.cid ) )
       
       LOG.write( 'input trees :\n' )
-      for treefile in trees :
-        if os.stat( treefile ).st_size > 0 : 
-          LOG.write( '    {f}\n'.format( f=treefile ) )
+      for treefile in input.trees :
+        LOG.write( '    {f}\n'.format( f=treefile ) )
       
       data = []
       
-      for treefile1, treefile2 in combinations( trees, 2 ) :
+      for treefile1, treefile2 in combinations( input.trees, 2 ) :
         
         # if either treefile is an empty sentilel file, skip the calculations
         if os.stat( treefile1 ).st_size == 0 : continue
