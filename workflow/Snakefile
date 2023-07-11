@@ -297,7 +297,7 @@ rule hmmdb :
   log :
     'logs/hmmdb/hmmdb.log'
   benchmark :
-    'benchmarks/hmmdb/{hmm}.tsv'
+    'benchmarks/hmmdb/hmmdb.tsv'
   run :
     profiles = []
     for hmmfile in input.hmms :
