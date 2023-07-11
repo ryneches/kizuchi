@@ -282,6 +282,8 @@ rule prodigal :
     #gff='proteins/{fasta}_genes.gff',
   log :
     'logs/prodigal/{fasta}.log',
+  benchmark :
+    'benchmarks/prodigal/{fasta}.tsv'
   params :
     extra='',
   wrapper :
@@ -294,6 +296,8 @@ rule hmmdb :
     db   = 'hmmdb/models.hmm'
   log :
     'logs/hmmdb/hmmdb.log'
+  benchmark :
+    'benchmarks/hmmdb/{hmm}.tsv'
   run :
     profiles = []
     for hmmfile in input.hmms :
@@ -310,6 +314,8 @@ rule hmmer :
     profile = 'hmmdb/models.hmm'
   log :
     'logs/hmmer/{fasta}.log',
+  benchmark :
+    'benchmarks/hmmer/{fasta}.tsv'
   output :
     tblout         = 'hmm_hits/{fasta}_prot_tbl.txt',
     #domtblout      = 'hmm_hits/{fasta}_{hmm}_prot_dom_tbl.txt',
@@ -329,6 +335,8 @@ rule scoring :
     prealign = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS )
   log :
     'logs/scoring/scoring.log'
+  benchmark :
+    'benchmarks/scoring/scoring.tsv'
   run :
     with open( log[0], 'w' ) as LOG :
       prealignments = { Path(p).stem : { 'prealign' : p,
@@ -384,6 +392,8 @@ rule preani :
     queries    = 'preani/queries.txt',
   log :
     'logs/preani/preani.log'
+  benchmark :
+    'benchmarks/preani/preani.tsv'
   run :
     with open( output.references, 'w' ) as rf :
       for fasta in input.references :
@@ -400,6 +410,8 @@ rule fastani :
     'ani/ani.tsv'
   log :
     'logs/fastani/fastani.log'
+  benchmark :
+    'benchmarks/fastani/fastani.tsv'
   threads : THREADS
   wrapper :
     'file://wrappers/fastani'
@@ -411,6 +423,8 @@ rule ani_clusters :
     'ani_clusters/ani_clusters_{ani_cutoff}.txt'
   log :
     'logs/ani_clusters/{ani_cutoff}.log'
+  benchmark :
+    'benchmarks/ani_clusters/{ani_cutoff}.tsv'
   run :
     header = [ 'query', 'reference', 'ANI', 
                'bidirectional fragment mappings',
@@ -471,6 +485,8 @@ rule cluster_filtering :
   params :
   log :
     'logs/cluster_filtering/cluster_filtering.log'
+  benchmark :
+    'benchmarks/cluster_filtering/cluster_filtering.tsv'
   run :
     def intersect( hmms, genomes, threshold ) :
       C = defaultdict( set )
@@ -534,6 +550,8 @@ checkpoint write_cluster_fastas :
     clusters = directory( 'clusters' )
   log :
     'logs/write_cluster_fastas/write_cluster_fastas.log'
+  benchmark :
+    'benchmarks/write_cluster_fastas/write_cluster_fastas.tsv'
   run :
     with open( log[0], 'w' ) as LOG :
       LOG.write( 'loading sequences...\n' )
@@ -576,6 +594,8 @@ rule clustalo :
     extra=''
   log :
     'logs/clustalo/{ani}_{cid}_{ckhmm}.log'
+  benchmark :
+    'benchmarks/clustalo/{ani}_{cid}_{ckhmm}.tsv'
   threads : THREADS
   wrapper :
     'file://wrappers/clustalo'
@@ -587,6 +607,8 @@ rule trimal :
     'clusters/{ani}/{cid}/trimmed_alignments/{ckhmm}_aln.fna'
   log :
     'logs/trimal/{ani}_{cid}_{ckhmm}.log'
+  benchmark :
+    'benchmarks/trimal/{ani}_{cid}_{ckhmm}.tsv'
   params :
     extra='-automated1'
   wrapper :
@@ -599,6 +621,8 @@ rule filter_alignments :
     'clusters/{ani}/{cid}/filtered_trimmed_alignments/{ckhmm}_aln.fna'
   log :
     'logs/filter_alignments/{ani}_{cid}_{ckhmm}.log'
+  benchmark :
+    'benchmarks/filter_alignments/{ani}_{cid}_{ckhmm}.tsv'
   run :
     if open( input[0] ).read().count( '>' ) < 3 :
       with open( log[0], 'w' ) as f :
@@ -627,6 +651,8 @@ rule fasttree :
     tree = 'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk'
   log :
     'logs/fasttree/{ani}_{cid}_{ckhmm}.log'
+  benchmark :
+    'benchmarks/fasttree/{ani}_{cid}_{ckhmm}.tsv'
   params :
     extra=''
   wrapper :
@@ -643,6 +669,8 @@ rule taxatrees :
     'clusters/{ani}/{cid}/trees/by_taxa/{ckhmm}.nwk',
   log :
     'logs/gene-taxa/{ani}_{cid}_{ckhmm}_mapping.txt',
+  benchmark :
+    'benchmarks/taxatrees/{ani}_{cid}_{ckhmm}.tsv'
   run :
     with open( log[0], 'w' ) as LOG :
       if not os.path.getsize( input[0] ) == 0 :
@@ -684,6 +712,8 @@ rule clusterdata :
     cid   = '{cid}',
   log :
     'logs/clusterdata/{ani}_{cid}.log'
+  benchmark :
+    'benchmarks/clusterdata/{ani}_{cid}.tsv'
   run :
     with open( log[0], 'w' ) as LOG :
        
