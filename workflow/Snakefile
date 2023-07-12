@@ -787,6 +787,8 @@ rule clusterdata :
         
         data.append(  { 'hmm1'          : hmm1_name,
                         'hmm2'          : hmm2_name,
+                        'hmm1_leafs'    : T1.n_leafs,
+                        'hmm2_leafs'    : T2.n_leafs,
                         'links'         : len(links),
                         'hmm1_skew'     : hmm1_skew,
                         'hmm2_skew'     : hmm2_skew,
