@@ -274,6 +274,7 @@ rule hmmr_summary :
 
 
 rule prodigal :
+  group : 'gene_prediction'
   input :
     fna='data/genomes-enabled/{fasta}.fna', 
   output :
@@ -290,6 +291,7 @@ rule prodigal :
     'file://wrappers/prodigal-gv'
 
 rule hmmdb :
+  group : 'gene_prediction'
   input :
     hmms = expand( 'data/hmms-enabled/{hmm}.hmm', hmm=HMMS )
   output :
@@ -309,6 +311,7 @@ rule hmmdb :
     writer.save_many_to_file( hmms=profiles, output=output.db )
 
 rule hmmer :
+  group : 'gene_prediction'
   input :
     fasta   = 'proteins/{fasta}_genes.faa',
     profile = 'hmmdb/models.hmm'
@@ -384,6 +387,7 @@ rule scoring :
             f.write( '' )
 
 rule preani :
+  group : 'ani'
   input :
     references = expand( 'data/genomes-enabled/{reference}.fna', reference=R ),
     queries    = expand( 'data/genomes-enabled/{query}.fna', query=Q )
@@ -403,6 +407,7 @@ rule preani :
         qf.write( fasta + '\n' )
 
 rule fastani :
+  group : 'ani'
   input :
     reference = 'preani/references.txt',
     query     = 'preani/queries.txt'
@@ -417,6 +422,7 @@ rule fastani :
     'file://wrappers/fastani'
 
 rule ani_clusters :
+  group : 'ani'
   input :
     ani = 'ani/ani.tsv',
   output :
@@ -586,6 +592,7 @@ checkpoint write_cluster_fastas :
                 f.write( seq.format( 'fasta' ) )
 
 rule clustalo :
+  group : 'phylogenomics'
   input :
     'clusters/{ani}/{cid}/genes/{ckhmm}.fna'
   output :
@@ -601,6 +608,7 @@ rule clustalo :
     'file://wrappers/clustalo'
 
 rule trimal :
+  group : 'phylogenomics'
   input :
     'clusters/{ani}/{cid}/alignments/{ckhmm}_aln.fna'
   output :
@@ -615,6 +623,7 @@ rule trimal :
     'file://wrappers/trimal'
 
 rule filter_alignments :
+  group : 'phylogenomics'
   input :
     'clusters/{ani}/{cid}/trimmed_alignments/{ckhmm}_aln.fna'
   output :
@@ -645,6 +654,7 @@ rule filter_alignments :
           f.write( '' )
 
 rule fasttree :
+  group : 'phylogenomics'
   input :
     alignment = 'clusters/{ani}/{cid}/filtered_trimmed_alignments/{ckhmm}_aln.fna'
   output :
@@ -663,6 +673,7 @@ rule taxatrees :
   Prune trees to individual taxa using. Taxa are represented
   by the gene with the top-scoring HMM hit.
   '''
+  group : 'phylogenomics'
   input :
     'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk',
   output :
@@ -703,6 +714,7 @@ rule taxatrees :
         open( output[0], 'w' ).close()
 
 rule clusterdata :
+  group : 'phylogenomics'
   input :
     trees = get_cluster_trees
   output :
