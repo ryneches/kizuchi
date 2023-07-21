@@ -74,11 +74,11 @@ def clustalo_memory( wildcards, attempt ) :
   a = 3e-5
   b = 0.4
   c = 500
-  fastapath = os.join( 'clusters',
-                       wildcards.ani,
-                       wildcards.cid,
-                       'genes',
-                       wildcards.ckhmm + '.fna' )
+  fastapath = os.path.join( 'clusters',
+                            wildcards.ani,
+                            wildcards.cid,
+                            'genes',
+                            wildcards.ckhmm + '.fna' )
 
   max_gene_length = max( [ len(rec)
                            for rec
@@ -92,11 +92,11 @@ def trimal_memory( wildcards, attempt ) :
   a = 0
   b = 0.05
   c = 100
-  fastapath = os.join( 'clusters',
-                       wildcards.ani,
-                       wildcards.cid,
-                       'alignments',
-                       wildcards.ckhmm + '_aln.fna' )
+  fastapath = os.path.join( 'clusters',
+                            wildcards.ani,
+                            wildcards.cid,
+                            'alignments',
+                            wildcards.ckhmm + '_aln.fna' )
   
   n_sequences = len( [ rec
                        for rec
@@ -110,16 +110,18 @@ def fasttree_memory( wildcards, attempt ) :
   a = 0
   b = 1.8e-4
   c = 70
-  fastapath = os.join( 'clusters',
-                       wildcards.ani,
-                       wildcards.cid,
-                       'filtered_trimmed_alignments',
-                       wildcards.ckhmm + '_aln.fna' )
+  fastapath = os.path.join( 'clusters',
+                             wildcards.ani,
+                             wildcards.cid,
+                             'filtered_trimmed_alignments',
+                             wildcards.ckhmm + '_aln.fna' )
   
   sequence_lengths = [ len(rec)
                        for rec
                        in parse( open( fastapath ), 'fasta' ) ]
   
+  if len( sequence_lengths ) == 0 : return 0
+
   x = max( sequence_lengths ) * len( sequence_lengths )
 
   return a * x**2 + b * x + c * attempt
