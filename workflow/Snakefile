@@ -67,6 +67,63 @@ MIN_CLUSTER_LINKS = 5
 # distances exceeds this threshold
 DEGEN_THRESHOLD = 0.5
 
+# resource use projection functions : estimation of 
+# empirical constants can be found in docs/Benchmarks.ipynb
+
+def clustalo_memory( wildcards, attempt ) :
+  a = 3e-5
+  b = 0.4
+  c = 500
+  fastapath = os.join( 'clusters',
+                       wildcards.ani,
+                       wildcards.cid,
+                       'genes',
+                       wildcards.ckhmm + '.fna' )
+
+  max_gene_length = max( [ len(rec)
+                           for rec
+                           in parse( open( fastapath ), 'fasta' ) ] )
+  
+  x = max_gene_length
+
+  return a * x**2 + b * x + c * attempt
+
+def trimal_memory( wildcards, attempt ) :
+  a = 0
+  b = 0.05
+  c = 100
+  fastapath = os.join( 'clusters',
+                       wildcards.ani,
+                       wildcards.cid,
+                       'alignments',
+                       wildcards.ckhmm + '_aln.fna' )
+  
+  n_sequences = len( [ rec
+                       for rec
+                       in parse( open( fastapath ), 'fasta' ) ] )
+  
+  x = n_sequences
+
+  return a * x**2 + b * x + c * attempt
+
+def fasttree_memory( wildcards, attempt ) :
+  a = 0
+  b = 1.8e-4
+  c = 70
+  fastapath = os.join( 'clusters',
+                       wildcards.ani,
+                       wildcards.cid,
+                       'filtered_trimmed_alignments',
+                       wildcards.ckhmm + '_aln.fna' )
+  
+  sequence_lengths = [ len(rec)
+                       for rec
+                       in parse( open( fastapath ), 'fasta' ) ]
+  
+  x = max( sequence_lengths ) * len( sequence_lengths )
+
+  return a * x**2 + b * x + c * attempt
+
 # borrowed from CheckV
 def parse_hmmsearch( path ) :
   with open(path) as f:
@@ -274,6 +331,7 @@ rule hmmr_summary :
 
 
 rule prodigal :
+  group : 'gene_prediction'
   input :
     fna='data/genomes-enabled/{fasta}.fna', 
   output :
@@ -290,6 +348,7 @@ rule prodigal :
     'file://wrappers/prodigal-gv'
 
 rule hmmdb :
+  group : 'gene_prediction'
   input :
     hmms = expand( 'data/hmms-enabled/{hmm}.hmm', hmm=HMMS )
   output :
@@ -309,6 +368,7 @@ rule hmmdb :
     writer.save_many_to_file( hmms=profiles, output=output.db )
 
 rule hmmer :
+  group : 'gene_prediction'
   input :
     fasta   = 'proteins/{fasta}_genes.faa',
     profile = 'hmmdb/models.hmm'
@@ -384,6 +444,7 @@ rule scoring :
             f.write( '' )
 
 rule preani :
+  group : 'ani'
   input :
     references = expand( 'data/genomes-enabled/{reference}.fna', reference=R ),
     queries    = expand( 'data/genomes-enabled/{query}.fna', query=Q )
@@ -403,6 +464,7 @@ rule preani :
         qf.write( fasta + '\n' )
 
 rule fastani :
+  group : 'ani'
   input :
     reference = 'preani/references.txt',
     query     = 'preani/queries.txt'
@@ -417,6 +479,7 @@ rule fastani :
     'file://wrappers/fastani'
 
 rule ani_clusters :
+  group : 'ani'
   input :
     ani = 'ani/ani.tsv',
   output :
@@ -586,6 +649,7 @@ checkpoint write_cluster_fastas :
                 f.write( seq.format( 'fasta' ) )
 
 rule clustalo :
+  group : 'phylogenomics'
   input :
     'clusters/{ani}/{cid}/genes/{ckhmm}.fna'
   output :
@@ -597,10 +661,13 @@ rule clustalo :
   benchmark :
     'benchmarks/clustalo/{ani}_{cid}_{ckhmm}.tsv'
   threads : THREADS
+  resources :
+    mem_mb = clustalo_memory
   wrapper :
     'file://wrappers/clustalo'
 
 rule trimal :
+  group : 'phylogenomics'
   input :
     'clusters/{ani}/{cid}/alignments/{ckhmm}_aln.fna'
   output :
@@ -610,11 +677,15 @@ rule trimal :
   benchmark :
     'benchmarks/trimal/{ani}_{cid}_{ckhmm}.tsv'
   params :
-    extra='-automated1'
+    extra = '-automated1'
+  threads : THREADS
+  resources :
+    mem_mb = trimal_memory
   wrapper :
     'file://wrappers/trimal'
 
 rule filter_alignments :
+  group : 'phylogenomics'
   input :
     'clusters/{ani}/{cid}/trimmed_alignments/{ckhmm}_aln.fna'
   output :
@@ -645,6 +716,7 @@ rule filter_alignments :
           f.write( '' )
 
 rule fasttree :
+  group : 'phylogenomics'
   input :
     alignment = 'clusters/{ani}/{cid}/filtered_trimmed_alignments/{ckhmm}_aln.fna'
   output :
@@ -655,6 +727,9 @@ rule fasttree :
     'benchmarks/fasttree/{ani}_{cid}_{ckhmm}.tsv'
   params :
     extra=''
+  threads : THREADS
+  resources :
+    mem_mb = fasttree_memory
   wrapper :
     'file://wrappers/fasttree'
 
@@ -663,6 +738,7 @@ rule taxatrees :
   Prune trees to individual taxa using. Taxa are represented
   by the gene with the top-scoring HMM hit.
   '''
+  group : 'phylogenomics'
   input :
     'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk',
   output :
@@ -703,6 +779,7 @@ rule taxatrees :
         open( output[0], 'w' ).close()
 
 rule clusterdata :
+  group : 'phylogenomics'
   input :
     trees = get_cluster_trees
   output :
@@ -787,6 +864,8 @@ rule clusterdata :
         
         data.append(  { 'hmm1'          : hmm1_name,
                         'hmm2'          : hmm2_name,
+                        'hmm1_leafs'    : T1.n_leafs,
+                        'hmm2_leafs'    : T2.n_leafs,
                         'links'         : len(links),
                         'hmm1_skew'     : hmm1_skew,
                         'hmm2_skew'     : hmm2_skew,
