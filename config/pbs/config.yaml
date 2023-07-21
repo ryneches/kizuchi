@@ -1,0 +1,5 @@
+cluster-config: "config/pbs/cluster.yaml"
+cluster: "qsub -N `echo {cluster.jobname} | tr '=' '-'` -l nodes={cluster.nodes}:ppn={cluster.ppn},pmem={cluster.pmem},walltime={cluster.walltime} -A {cluster.account} -q {cluster.queue} -M {cluster.email} -m {cluster.mailon} -j {cluster.jobout} -o {cluster.outdir} -V "
+jobs: 4998
+verbose: true
+notemp: true
