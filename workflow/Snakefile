@@ -278,7 +278,8 @@ rule clean :
   shell :
     'rm -rf proteins genes hmm_hits hmmdb \
         preani ani ani_clusters scored_proteins \
-        cluster_filtering clusters statistics logs'
+        cluster_filtering clusters statistics \
+        benchmarks logs'
 
 rule hmmr_summary :
   input :
