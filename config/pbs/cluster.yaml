@@ -9,4 +9,4 @@ __default__:
   email: "hpc@vort.org"
   mailon: "bea"
   jobout: "oe"
-  outdir: "log/pbs/"
+  outdir: "logs/pbs/"
