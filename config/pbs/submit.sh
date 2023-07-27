@@ -13,7 +13,7 @@
 ####    an the amount of time a job requires.  May include processor
 ####    type, too.
 
-#PBS -l nodes=1:ppn=1,pmem=4000mb
+#PBS -l nodes=1:ppn=1,pmem=10000mb
 #PBS -l walltime=8:00:00
 
 ####  Flux account and queue specification here
