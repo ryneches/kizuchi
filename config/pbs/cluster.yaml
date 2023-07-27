@@ -3,7 +3,7 @@ __default__:
   nodes: 1
   ppn: 1
   pmem: "1000mb"
-  walltime: "5:00"
+  walltime: "2:00:00"
   account: "ACCOUNT"
   queue: "cdb"
   email: "hpc@vort.org"
