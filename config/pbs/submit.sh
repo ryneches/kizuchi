@@ -81,7 +81,7 @@ snakemake                       \
         gene_prediction=32      \
         ani=4                   \
         phylogenomics=32        \
-    --batch clusterdata=1/100   \
+    --batch clusterdata=1/20    \
 
 # Printing out job summary
 qstat -f $PBS_JOBID
