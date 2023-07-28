@@ -69,7 +69,10 @@ fi
 ##  Note:  In batch jobs, programs should always run in foreground.  Do
 ##         not use an & at the end of a command. Bad things will happen.
 
+#### Create cluster log directory
 
+mkdir -p logs
+mkdir -p logs/pdb
 
 # Initiating snakemake and running workflow in cluster mode
 snakemake                       \
