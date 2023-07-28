@@ -73,6 +73,7 @@ fi
 
 # Initiating snakemake and running workflow in cluster mode
 snakemake                       \
+    --scheduler greedy          \
     --jobs 8                    \
     --profile config/pbs        \
     --latency-wait 20           \
