@@ -34,7 +34,7 @@
 ####  Join output and error; pass environment to job
 
 #PBS -j oe
-#PBS -o logs/pdb/
+#PBS -o logs/pds/
 #PBS -V
 
 # Add a note here to say what software modules should be loaded.
@@ -72,7 +72,7 @@ fi
 #### Create cluster log directory
 
 mkdir -p logs
-mkdir -p logs/pdb
+mkdir -p logs/pbs
 
 # Initiating snakemake and running workflow in cluster mode
 snakemake                       \
