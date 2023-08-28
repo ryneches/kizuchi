@@ -69,210 +69,10 @@ DEGEN_THRESHOLD = 0.5
 
 # resource use projection functions : estimation of 
 # empirical constants can be found in docs/Benchmarks.ipynb
-
-def clustalo_memory( wildcards, attempt ) :
-  a = 3e-5
-  b = 0.4
-  c = 500
-  fastapath = os.path.join( 'clusters',
-                            wildcards.ani,
-                            wildcards.cid,
-                            'genes',
-                            wildcards.ckhmm + '.fna' )
-
-  max_gene_length = max( [ len(rec)
-                           for rec
-                           in parse( open( fastapath ), 'fasta' ) ] )
-  
-  x = max_gene_length
-
-  return a * x**2 + b * x + c * attempt
-
-def trimal_memory( wildcards, attempt ) :
-  a = 0
-  b = 0.05
-  c = 100
-  fastapath = os.path.join( 'clusters',
-                            wildcards.ani,
-                            wildcards.cid,
-                            'alignments',
-                            wildcards.ckhmm + '_aln.fna' )
-  
-  n_sequences = len( [ rec
-                       for rec
-                       in parse( open( fastapath ), 'fasta' ) ] )
-  
-  x = n_sequences
-
-  return a * x**2 + b * x + c * attempt
-
-def fasttree_memory( wildcards, attempt ) :
-  a = 0
-  b = 1.8e-4
-  c = 70
-  fastapath = os.path.join( 'clusters',
-                             wildcards.ani,
-                             wildcards.cid,
-                             'filtered_trimmed_alignments',
-                             wildcards.ckhmm + '_aln.fna' )
-  
-  sequence_lengths = [ len(rec)
-                       for rec
-                       in parse( open( fastapath ), 'fasta' ) ]
-  
-  if len( sequence_lengths ) == 0 : return 0
-
-  x = max( sequence_lengths ) * len( sequence_lengths )
-
-  return a * x**2 + b * x + c * attempt
-
-# borrowed from CheckV
-def parse_hmmsearch( path ) :
-  with open(path) as f:
-    names = [ 'tname', 'qacc', 'qname', 'tacc',   'eval', 
-              'score', 'bias', 'beval', 'bscore', 'bbias' ]
-    formats = [ str,   str,   str,   str,   float, 
-                float, float, float, float, float ]
-    for line in f:
-      if not line.startswith( '#' ) :
-        values = line.split()
-        yield dict( [ ( names[i], formats[i](values[i]) ) 
-                      for i in range(10) ] )
-
-def bipartition_compatibility( A, B ) :
-    '''
-    Test for compatibility of two bipartitions.
-    
-    [1] Salichos, Leonidas, Alexandros Stamatakis, and
-        Antonis Rokas. "Novel information theory-based 
-        measures for quantifying incongruence among 
-        phylogenetic trees." Molecular biology and 
-        evolution 31, no. 5 (2014): 1261-1271.
-    [2] Salichos, Leonidas, and Antonis Rokas. "Inferring
-        ancient divergences requires genes with strong 
-        phylogenetic signals." Nature 497, no. 7449 
-        (2013): 327-331.
-    '''
-    A0,A1 = A
-    B0,B1 = B
-    return ( not bool( A0 & B0 ) ) \
-         | ( not bool( A1 & B0 ) ) \
-         | ( not bool( A0 & B1 ) ) \
-         | ( not bool( A1 & B1 ) )
-
-def bipartition_compatibility_ratio( T1, T2, links ) :
-    '''
-    Compute the ratio of compatible bipartitions of connected
-    leaf nodes between two gene trees. Connected leaf names 
-    are mapped into a common namespace, so only bipartitions
-    of the connected leaf nodes are included in the ratio.
-    '''
-    L1,L2 = zip(*links)
-    
-    B1 = frozenset( frozenset((a,b)) for a,b in 
-                    [ [ frozenset( L1.index(i) for i in a if i in L1 ), 
-                        frozenset( L1.index(i) for i in b if i in L1 ) ]
-                      for a,b in T1.bipartitions() ]
-                    if a and b )
-    
-    B2 = frozenset( frozenset((a,b)) for a,b in 
-                    [ [ frozenset( L2.index(i) for i in a if i in L2 ), 
-                        frozenset( L2.index(i) for i in b if i in L2 ) ]
-                      for a,b in T2.bipartitions() ]
-                    if a and b )
-    
-    S = [ bipartition_compatibility( b1, b2 ) for b1,b2 in product( B1, B2 ) ]
-    
-    return { 'ratio'   : sum(S)/len(S),
-             'jaccard' : len( B1 & B2 ) / len( B1 | B2 ) }
-
-def find_links( genes1, genes2 ) :
-    '''
-    For two sets of genes called from the same set of genomes, find the linkage
-    relationships connecting the genes.
-    '''
-    t1_genomes = { name : name.rsplit('_', 3)[0] for name in genes1 }
-    t2_genomes = { name : name.rsplit('_', 3)[0] for name in genes2 }
-    
-    t1_genes = defaultdict(list)
-    for name in genes1 :
-        genome = name.rsplit( '_', 3 )[0]
-        t1_genes[genome].append( name )
-    
-    t2_genes = defaultdict(list)
-    for name in genes2 :
-        genome = name.rsplit( '_', 3 )[0]
-        t2_genes[genome].append( name )
-    
-    links = []
-    for genome in set( t1_genes.keys() ) & set( t2_genes.keys() ) :
-        
-        # if both genes are single copy a genome, it is linked
-        # if either gene has duplications, each copy of each
-        # gene is linked only if they are on the same contig
-        
-        if len( t1_genes[ genome] ) == len( t2_genes[ genome ] ) == 1 :
-            
-            links.append( ( t1_genes[genome][0], t2_genes[genome][0] ) )
-            
-        else :
-            for gene1 in t1_genes[ genome ] :
-                for gene2 in t2_genes[ genome ] :
-                    contig1 = gene1.rsplit('_', 2)[0]
-                    contig2 = gene2.rsplit('_', 2)[0]
-                    if contig1 == contig2 :
-                        links.append( ( gene1, gene2 ) )
-    
-    return links
-
-def get_cluster_trees( wildcards ) :
-
-  ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
-  
-  CK = glob_wildcards( os.path.join( ck_output,
-                                     wildcards.ani,
-                                     wildcards.cid,
-                                     'genes',
-                                     '{ckhmm}.fna' ) )
-  
-  return expand( os.path.join( ck_output,
-                               wildcards.ani,
-                               wildcards.cid,
-                               'trees',
-                               'by_gene',
-                               '{ckhmm}.nwk' ),
-                 ckhmm=CK.ckhmm )
-  
-def get_cluster_data( wildcards ) :
-  
-  ck_output = checkpoints.write_cluster_fastas.get(**wildcards).output[0]
-  
-  CK = glob_wildcards( os.path.join( ck_output,
-                                     '{ani}',
-                                     '{cid}',
-                                     'genes',
-                                     '{ckhmm}.fna' ) )
-  
-  return expand( os.path.join( ck_output,
-                               '{ani}',
-                               '{cid}',
-                               'data.tsv' ),
-                 zip,
-                 ani=CK.ani,
-                 cid=CK.cid )
   
 rule all :
   input :
-    #expand( 'trees/by_taxa/{hmm}.nwk', hmm=HMMS ),
-    #expand( 'gene_clusters/{gene_cutoff}/{hmm}.tsv', gene_cutoff=GENE_OTU_THRESHOLDS, hmm=HMMS ),
-    #expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS ),
-    #expand( 'cluster_correlations/{hmm1}_{hmm2}.tsv', zip, hmm1=HMMS ),
-    #'statistics/hmmr_summary.txt'
-    #'cluster_correlations/cluster_correlations.tsv',
-    #expand( 'clusters/{ani}/{cid}/alignments/{hmm}_aln.faa', 
-    #        zip, ani=CK.ani, cid=CK.cid, hmm=CK.hmm )
-    #get_cluster_filenames
-    get_cluster_data
+    'cluster_filtering/clusters.tsv'
 
 rule clean :
   shell :
@@ -331,7 +131,6 @@ rule hmmr_summary :
                                                                    b=hitlist[protein]['bitscore'] ) )
             else :
               f.write( '      protien {m} : {p}\n'.format( m=m+1, p=protein ) )
-
 
 rule prodigal :
   group : 'gene_prediction'
@@ -541,13 +340,14 @@ rule ani_clusters :
       for cid, cg in ani_clusters.items() :
         f.write( '{cid}\t{genomes}\n'.format( cid=str(cid), genomes=','.join(cg) ) )
 
-
-rule cluster_filtering :
+rule build_clusters :
   input :
     prealignments = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS ),
+    genes         = expand( 'genes/{fasta}_genes.fna', fasta=GENOMES ),
     ani_clusters  = expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS )
   output :
-    clusters = 'cluster_filtering/clusters.tsv'
+    cluster_table = 'cluster_filtering/clusters.tsv',
+    clusters      = directory( 'clusters' ),
   params :
   log :
     'logs/cluster_filtering/cluster_filtering.log'
@@ -566,8 +366,17 @@ rule cluster_filtering :
       sequences = { Path(fasta).stem : { rec.id : rec.seq for rec in parse( open( fasta ), 'fasta' ) } 
                     for fasta in input.prealignments }
       
+      geneseqs = { Path(fasta).stem.rsplit('_',1)[0] : { rec.id : rec
+                                        for rec in parse( open( fasta ), 'fasta' ) }
+                   for fasta in input.genes }
+
+      LOG.write( 'Genomes loaded :\n' )
+      for genome in geneseqs.keys() :
+        LOG.write( '    {genome} : {n}\n'.format( genome=genome, n=len(geneseqs[genome]) ) )
+
+      LOG.write( 'Genes loaded :\n' )
       for hmm in sequences.keys() :
-        LOG.write( '{hmm} : {n}\n'.format( hmm=hmm, n=len(sequences[hmm]) ) )
+        LOG.write( '    {hmm} : {n}\n'.format( hmm=hmm, n=len(sequences[hmm]) ) )
       
       LOG.write( 'creating gene table for genome clusters...\n' )
       records = []
@@ -606,43 +415,25 @@ rule cluster_filtering :
       
       LOG.write( 'filtered gene table description :\n\n' + str( cluster_table.describe() ) )
 
-      cluster_table.write_csv( file=output.clusters, separator='\t' )
+      cluster_table.write_csv( file=output.cluster_table, separator='\t' )
 
-checkpoint write_cluster_fastas :
-  input :
-    cluster_table = 'cluster_filtering/clusters.tsv',
-    genes         = expand( 'genes/{fasta}_genes.fna', fasta=GENOMES )
-  output :
-    clusters = directory( 'clusters' )
-  log :
-    'logs/write_cluster_fastas/write_cluster_fastas.log'
-  benchmark :
-    'benchmarks/write_cluster_fastas/write_cluster_fastas.tsv'
-  run :
-    with open( log[0], 'w' ) as LOG :
-      LOG.write( 'loading sequences...\n' )
-      geneseqs = { Path(fasta).stem.rsplit('_',1)[0] : { rec.id : rec
-                                        for rec in parse( open( fasta ), 'fasta' ) }
-                   for fasta in input.genes }
+      # create cluster directory structure and write gene nucleotide
+      # sequences as individual fastas per cluster
       
-      for genome in geneseqs.keys() :
-        LOG.write( '{genome} : {n}\n'.format( genome=genome, n=len(geneseqs[genome]) ) )
- 
-      LOG.write( 'loading cluster table...\n' )
-      df = polars.read_csv( input.cluster_table, separator='\t' )
-      LOG.write( 'found {n} clusters.\n'.format( n=len( df.groupby('id').agg('seq_id') ) ) )
-
+      LOG.write( 'found {n} clusters.\n'.format( n=len( cluster_table.groupby('id').agg('seq_id') ) ) )
+      
       if not os.path.exists( 'clusters' ) : os.mkdir( 'clusters' )
-      for ANI,cids in df.groupby('ANI').agg( polars.col('cid').unique() ).sort('ANI').iter_rows() :
+      for ANI,cids in cluster_table.groupby('ANI').agg( polars.col('cid').unique() ).sort('ANI').iter_rows() :
         anipath = os.path.join( 'clusters', str(ANI) )
-        if not os.path.exists( anipath) : os.mkdir( anipath )
+        if not os.path.exists( anipath ) : os.mkdir( anipath )
         for cluster_id in cids :
           clusterpath = os.path.join( anipath, str( cluster_id ) )
           if not os.path.exists( clusterpath ) : os.mkdir( clusterpath )
           genepath = os.path.join( clusterpath, 'genes' )
           if not os.path.exists( genepath ) : os.mkdir( genepath )
           hmms_written = set() # FIXME : workaround for post-checkpoint wildcard matching
-          for hmm,seq_ids,genomes in df.filter( ( polars.col('ANI') == ANI ) & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
+          for hmm,seq_ids,genomes in cluster_table.filter( ( polars.col('ANI') == ANI ) 
+                                                         & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
             hmms_written.add( hmm ) # FIXME : workaround for post-checkpoint wildcard matching
             with open( os.path.join( genepath, hmm + '.fna' ), 'w' ) as f :
               for seq_id,genome in zip( seq_ids, genomes ) :
@@ -650,243 +441,3 @@ checkpoint write_cluster_fastas :
                 seq = geneseqs[genome][orig_seq_id] 
                 seq.id = seq_id
                 f.write( seq.format( 'fasta' ) )
-
-rule clustalo :
-  group : 'phylogenomics'
-  input :
-    'clusters/{ani}/{cid}/genes/{ckhmm}.fna'
-  output :
-    'clusters/{ani}/{cid}/alignments/{ckhmm}_aln.fna'
-  params :
-    extra=''
-  log :
-    'logs/clustalo/{ani}_{cid}_{ckhmm}.log'
-  benchmark :
-    'benchmarks/clustalo/{ani}_{cid}_{ckhmm}.tsv'
-  threads : THREADS
-  resources :
-    mem_mb = clustalo_memory
-  wrapper :
-    'file://wrappers/clustalo'
-
-rule trimal :
-  group : 'phylogenomics'
-  input :
-    'clusters/{ani}/{cid}/alignments/{ckhmm}_aln.fna'
-  output :
-    'clusters/{ani}/{cid}/trimmed_alignments/{ckhmm}_aln.fna'
-  log :
-    'logs/trimal/{ani}_{cid}_{ckhmm}.log'
-  benchmark :
-    'benchmarks/trimal/{ani}_{cid}_{ckhmm}.tsv'
-  params :
-    extra = '-automated1'
-  threads : THREADS
-  resources :
-    mem_mb = trimal_memory
-  wrapper :
-    'file://wrappers/trimal'
-
-rule filter_alignments :
-  group : 'phylogenomics'
-  input :
-    'clusters/{ani}/{cid}/trimmed_alignments/{ckhmm}_aln.fna'
-  output :
-    'clusters/{ani}/{cid}/filtered_trimmed_alignments/{ckhmm}_aln.fna'
-  log :
-    'logs/filter_alignments/{ani}_{cid}_{ckhmm}.log'
-  benchmark :
-    'benchmarks/filter_alignments/{ani}_{cid}_{ckhmm}.tsv'
-  run :
-    if open( input[0] ).read().count( '>' ) < 3 :
-      with open( log[0], 'w' ) as f :
-        f.write( 'no records.' )
-      with open( output[0], 'w' ) as f :
-        f.write( '' )
-    else :
-      A = AlignIO.read( input[0], 'fasta' )
-      L = A.get_alignment_length()
-      B = MultipleSeqAlignment( [ s for s in A if len(s.seq.replace('-',''))/L > AFT ] )
-      with open( log[0], 'w' ) as f :
-        f.write( 'aligned fraction threshold : {n}\n'.format( n=AFT ) )
-        f.write( 'alignment length           : {n}\n'.format( n=L ) )
-        f.write( 'input alignment sequences  : {n}\n'.format( n=len(A) ) )
-        f.write( 'output alignment sequences : {n}\n'.format( n=len(B) ) )
-      with open( output[0], 'w' ) as f :
-        if len(B) >= 3 :
-          AlignIO.write( B, f, 'fasta' )
-        else :
-          f.write( '' )
-
-rule fasttree :
-  group : 'phylogenomics'
-  input :
-    alignment = 'clusters/{ani}/{cid}/filtered_trimmed_alignments/{ckhmm}_aln.fna'
-  output :
-    tree = 'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk'
-  log :
-    'logs/fasttree/{ani}_{cid}_{ckhmm}.log'
-  benchmark :
-    'benchmarks/fasttree/{ani}_{cid}_{ckhmm}.tsv'
-  params :
-    extra=''
-  threads : THREADS
-  resources :
-    mem_mb = fasttree_memory
-  wrapper :
-    'file://wrappers/fasttree'
-
-rule taxatrees :
-  '''
-  Prune trees to individual taxa using. Taxa are represented
-  by the gene with the top-scoring HMM hit.
-  '''
-  group : 'phylogenomics'
-  input :
-    'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk',
-  output :
-    'clusters/{ani}/{cid}/trees/by_taxa/{ckhmm}.nwk',
-  log :
-    'logs/gene-taxa/{ani}_{cid}_{ckhmm}_mapping.txt',
-  benchmark :
-    'benchmarks/taxatrees/{ani}_{cid}_{ckhmm}.tsv'
-  run :
-    with open( log[0], 'w' ) as LOG :
-      if not os.path.getsize( input[0] ) == 0 :
-        T = dendropy.Tree.get( path=input[0],
-                               schema='newick',
-                               preserve_underscores=True )
-        
-        # Sometimes, the paralog with the lowest e-value from hmmer
-        # doesn't make it through trimming and filtering. The paralog
-        # with the lowest hmmer e-value AFTER alignment, trimming and
-        # filtering is chosen to represent the genome in the taxa tree.
-        
-        G = defaultdict(dict)
-        
-        for leaf in T.leaf_nodes() :
-          genome,contig,gene,paralog = leaf.taxon.label.rsplit( '_', 3 )
-          G[genome][int(paralog[1:])] = leaf.taxon.label
-        
-        keep = [ G[genome][min(G[genome].keys())] for genome in G.keys() ]
-        
-        T.retain_taxa_with_labels( keep )
-
-        for leaf in T.leaf_nodes() :
-          taxon = leaf.taxon.label.rsplit( '_', 3 )[0]
-          LOG.write( '{a}\t{b}\n'.format( a=leaf.taxon.label, b=taxon ) )
-          leaf.taxon.label = taxon
-        T.write( path=output[0],
-                 schema='newick' )
-      else :
-        open( output[0], 'w' ).close()
-
-rule clusterdata :
-  group : 'phylogenomics'
-  input :
-    trees = get_cluster_trees
-  output :
-    table = 'clusters/{ani}/{cid}/data.tsv'
-  params :
-    ani   = '{ani}',
-    cid   = '{cid}',
-  log :
-    'logs/clusterdata/{ani}_{cid}.log'
-  benchmark :
-    'benchmarks/clusterdata/{ani}_{cid}.tsv'
-  run :
-    with open( log[0], 'w' ) as LOG :
-       
-      LOG.write( 'ANI        : {ani}\n'.format( ani=params.ani ) )
-      LOG.write( 'cluster ID : {cid}\n'.format( cid=params.cid ) )
-      
-      LOG.write( 'input trees :\n' )
-      for treefile in input.trees :
-        LOG.write( '    {f}\n'.format( f=treefile ) )
-      
-      data = []
-      
-      for treefile1, treefile2 in combinations( input.trees, 2 ) :
-        
-        # if either treefile is an empty sentilel file, skip the calculations
-        if os.stat( treefile1 ).st_size == 0 : continue
-        if os.stat( treefile2 ).st_size == 0 : continue
-        
-        hmm1_name = Path( treefile1 ).stem.rsplit( '.', 1 )[0]
-        hmm2_name = Path( treefile2 ).stem.rsplit( '.', 1 )[0]
-        
-        LOG.write( 'loading {g1} and {g2}...\n'.format( g1=hmm1_name, g2=hmm2_name ) )
-        
-        T1 = SuchTree( treefile1 )
-        T2 = SuchTree( treefile2 )
-        links = find_links( list( T1.leafs.keys() ), list( T2.leafs.keys() ) )
-        
-        LOG.write( '    {g1} : {n} leafs\n'.format( g1=hmm1_name, n=T1.n_leafs ) )
-        LOG.write( '    {g2} : {n} leafs\n'.format( g2=hmm2_name, n=T2.n_leafs ) )
-        LOG.write( '    links : {n}\n'.format( n=len(links) ) )
-        
-        # some clusters may have lost enough members during trimming and filtering
-        # that they no longer meet the link threshold
-        if len(links) < MIN_CLUSTER_LINKS :
-          LOG.write( 'gene pair is below minimum link threshold; aborting.\n' )
-          continue
-        
-        hmm1_pairs = []
-        hmm2_pairs = []
-        
-        for (t1a,t2a),(t1b,t2b) in combinations( links, 2 ) :
-          hmm1_pairs.append( ( t1a, t1b ) )
-          hmm2_pairs.append( ( t2a, t2b ) )
-        
-        hmm1_distances = T1.distances_by_name( hmm1_pairs )
-        hmm2_distances = T2.distances_by_name( hmm2_pairs )
-        
-        LOG.write( '    computed {n} distances.\n'.format( n=str( len( hmm1_distances ) ) ) )
-        
-        # skip degenerate trees
-        if len( unique( hmm1_distances ) ) / len( hmm1_distances ) < DEGEN_THRESHOLD :
-          LOG.write( '    {g1} is degenerate, skipping.\n'.format( g1=hmm1_name ) )
-          continue
-        if len( unique( hmm2_distances ) ) / len( hmm2_distances ) < DEGEN_THRESHOLD :
-          LOG.write( '    {g2} is degenerate, skipping.\n'.format( g2=hmm2_name ) )
-          continue
-        
-        hmm1_skew = skew( hmm1_distances )
-        hmm2_skew = skew( hmm2_distances )
-        
-        hmm1_kurtosis = kurtosis( hmm1_distances )
-        hmm2_kurtosis = kurtosis( hmm2_distances )
-         
-        hmm1_stdev = stdev( hmm1_distances )
-        hmm2_stdev = stdev( hmm2_distances )
-         
-        r,pr = pearsonr(   hmm1_distances, hmm2_distances )
-        t,pt = kendalltau( hmm1_distances, hmm2_distances )
-        
-        bp_compat = bipartition_compatibility_ratio( T1, T2, links )
-        
-        data.append(  { 'hmm1'          : hmm1_name,
-                        'hmm2'          : hmm2_name,
-                        'hmm1_leafs'    : T1.n_leafs,
-                        'hmm2_leafs'    : T2.n_leafs,
-                        'links'         : len(links),
-                        'hmm1_skew'     : hmm1_skew,
-                        'hmm2_skew'     : hmm2_skew,
-                        'hmm1_kurtosis' : hmm1_kurtosis,
-                        'hmm2_kurtosis' : hmm2_kurtosis,
-                        'hmm1_stdev'    : hmm1_stdev,
-                        'hmm2_stdev'    : hmm2_stdev,
-                        'bp_ratio'      : bp_compat['ratio'],
-                        'bp_jaccard'    : bp_compat['jaccard'],
-                        'r'             : r,
-                        'pr'            : pr,
-                        'tau'           : t,
-                        'p_tau'         : pt,
-                        'cluster'       : int( params.cid ),
-                        'ANI'           : float( params.ani) } )
-      
-      if data :
-        LOG.write( 'writing records for {n} correlations...\n'.format( n=len( data ) ) )
-        polars.DataFrame( data ).write_csv( file=output[0], separator='\t' )
-      else :
-        LOG.write( 'no gene pairs exceed minimum link threshold, aborting.\n' )
