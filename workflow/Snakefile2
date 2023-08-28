@@ -1,0 +1,240 @@
+
+rule clustalo :
+  group : 'phylogenomics'
+  input :
+    'clusters/{ani}/{cid}/genes/{ckhmm}.fna'
+  output :
+    'clusters/{ani}/{cid}/alignments/{ckhmm}_aln.fna'
+  params :
+    extra=''
+  log :
+    'logs/clustalo/{ani}_{cid}_{ckhmm}.log'
+  benchmark :
+    'benchmarks/clustalo/{ani}_{cid}_{ckhmm}.tsv'
+  threads : THREADS
+  resources :
+    mem_mb = clustalo_memory
+  wrapper :
+    'file://wrappers/clustalo'
+
+rule trimal :
+  group : 'phylogenomics'
+  input :
+    'clusters/{ani}/{cid}/alignments/{ckhmm}_aln.fna'
+  output :
+    'clusters/{ani}/{cid}/trimmed_alignments/{ckhmm}_aln.fna'
+  log :
+    'logs/trimal/{ani}_{cid}_{ckhmm}.log'
+  benchmark :
+    'benchmarks/trimal/{ani}_{cid}_{ckhmm}.tsv'
+  params :
+    extra = '-automated1'
+  threads : THREADS
+  resources :
+    mem_mb = trimal_memory
+  wrapper :
+    'file://wrappers/trimal'
+
+rule filter_alignments :
+  group : 'phylogenomics'
+  input :
+    'clusters/{ani}/{cid}/trimmed_alignments/{ckhmm}_aln.fna'
+  output :
+    'clusters/{ani}/{cid}/filtered_trimmed_alignments/{ckhmm}_aln.fna'
+  log :
+    'logs/filter_alignments/{ani}_{cid}_{ckhmm}.log'
+  benchmark :
+    'benchmarks/filter_alignments/{ani}_{cid}_{ckhmm}.tsv'
+  run :
+    if open( input[0] ).read().count( '>' ) < 3 :
+      with open( log[0], 'w' ) as f :
+        f.write( 'no records.' )
+      with open( output[0], 'w' ) as f :
+        f.write( '' )
+    else :
+      A = AlignIO.read( input[0], 'fasta' )
+      L = A.get_alignment_length()
+      B = MultipleSeqAlignment( [ s for s in A if len(s.seq.replace('-',''))/L > AFT ] )
+      with open( log[0], 'w' ) as f :
+        f.write( 'aligned fraction threshold : {n}\n'.format( n=AFT ) )
+        f.write( 'alignment length           : {n}\n'.format( n=L ) )
+        f.write( 'input alignment sequences  : {n}\n'.format( n=len(A) ) )
+        f.write( 'output alignment sequences : {n}\n'.format( n=len(B) ) )
+      with open( output[0], 'w' ) as f :
+        if len(B) >= 3 :
+          AlignIO.write( B, f, 'fasta' )
+        else :
+          f.write( '' )
+
+rule fasttree :
+  group : 'phylogenomics'
+  input :
+    alignment = 'clusters/{ani}/{cid}/filtered_trimmed_alignments/{ckhmm}_aln.fna'
+  output :
+    tree = 'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk'
+  log :
+    'logs/fasttree/{ani}_{cid}_{ckhmm}.log'
+  benchmark :
+    'benchmarks/fasttree/{ani}_{cid}_{ckhmm}.tsv'
+  params :
+    extra=''
+  threads : THREADS
+  resources :
+    mem_mb = fasttree_memory
+  wrapper :
+    'file://wrappers/fasttree'
+
+rule taxatrees :
+  '''
+  Prune trees to individual taxa using. Taxa are represented
+  by the gene with the top-scoring HMM hit.
+  '''
+  group : 'phylogenomics'
+  input :
+    'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk',
+  output :
+    'clusters/{ani}/{cid}/trees/by_taxa/{ckhmm}.nwk',
+  log :
+    'logs/gene-taxa/{ani}_{cid}_{ckhmm}_mapping.txt',
+  benchmark :
+    'benchmarks/taxatrees/{ani}_{cid}_{ckhmm}.tsv'
+  run :
+    with open( log[0], 'w' ) as LOG :
+      if not os.path.getsize( input[0] ) == 0 :
+        T = dendropy.Tree.get( path=input[0],
+                               schema='newick',
+                               preserve_underscores=True )
+        
+        # Sometimes, the paralog with the lowest e-value from hmmer
+        # doesn't make it through trimming and filtering. The paralog
+        # with the lowest hmmer e-value AFTER alignment, trimming and
+        # filtering is chosen to represent the genome in the taxa tree.
+        
+        G = defaultdict(dict)
+        
+        for leaf in T.leaf_nodes() :
+          genome,contig,gene,paralog = leaf.taxon.label.rsplit( '_', 3 )
+          G[genome][int(paralog[1:])] = leaf.taxon.label
+        
+        keep = [ G[genome][min(G[genome].keys())] for genome in G.keys() ]
+        
+        T.retain_taxa_with_labels( keep )
+
+        for leaf in T.leaf_nodes() :
+          taxon = leaf.taxon.label.rsplit( '_', 3 )[0]
+          LOG.write( '{a}\t{b}\n'.format( a=leaf.taxon.label, b=taxon ) )
+          leaf.taxon.label = taxon
+        T.write( path=output[0],
+                 schema='newick' )
+      else :
+        open( output[0], 'w' ).close()
+
+rule clusterdata :
+  group : 'phylogenomics'
+  input :
+    trees = get_cluster_trees
+  output :
+    table = 'clusters/{ani}/{cid}/data.tsv'
+  params :
+    ani   = '{ani}',
+    cid   = '{cid}',
+  log :
+    'logs/clusterdata/{ani}_{cid}.log'
+  benchmark :
+    'benchmarks/clusterdata/{ani}_{cid}.tsv'
+  run :
+    with open( log[0], 'w' ) as LOG :
+       
+      LOG.write( 'ANI        : {ani}\n'.format( ani=params.ani ) )
+      LOG.write( 'cluster ID : {cid}\n'.format( cid=params.cid ) )
+      
+      LOG.write( 'input trees :\n' )
+      for treefile in input.trees :
+        LOG.write( '    {f}\n'.format( f=treefile ) )
+      
+      data = []
+      
+      for treefile1, treefile2 in combinations( input.trees, 2 ) :
+        
+        # if either treefile is an empty sentilel file, skip the calculations
+        if os.stat( treefile1 ).st_size == 0 : continue
+        if os.stat( treefile2 ).st_size == 0 : continue
+        
+        hmm1_name = Path( treefile1 ).stem.rsplit( '.', 1 )[0]
+        hmm2_name = Path( treefile2 ).stem.rsplit( '.', 1 )[0]
+        
+        LOG.write( 'loading {g1} and {g2}...\n'.format( g1=hmm1_name, g2=hmm2_name ) )
+        
+        T1 = SuchTree( treefile1 )
+        T2 = SuchTree( treefile2 )
+        links = find_links( list( T1.leafs.keys() ), list( T2.leafs.keys() ) )
+        
+        LOG.write( '    {g1} : {n} leafs\n'.format( g1=hmm1_name, n=T1.n_leafs ) )
+        LOG.write( '    {g2} : {n} leafs\n'.format( g2=hmm2_name, n=T2.n_leafs ) )
+        LOG.write( '    links : {n}\n'.format( n=len(links) ) )
+        
+        # some clusters may have lost enough members during trimming and filtering
+        # that they no longer meet the link threshold
+        if len(links) < MIN_CLUSTER_LINKS :
+          LOG.write( 'gene pair is below minimum link threshold; aborting.\n' )
+          continue
+        
+        hmm1_pairs = []
+        hmm2_pairs = []
+        
+        for (t1a,t2a),(t1b,t2b) in combinations( links, 2 ) :
+          hmm1_pairs.append( ( t1a, t1b ) )
+          hmm2_pairs.append( ( t2a, t2b ) )
+        
+        hmm1_distances = T1.distances_by_name( hmm1_pairs )
+        hmm2_distances = T2.distances_by_name( hmm2_pairs )
+        
+        LOG.write( '    computed {n} distances.\n'.format( n=str( len( hmm1_distances ) ) ) )
+        
+        # skip degenerate trees
+        if len( unique( hmm1_distances ) ) / len( hmm1_distances ) < DEGEN_THRESHOLD :
+          LOG.write( '    {g1} is degenerate, skipping.\n'.format( g1=hmm1_name ) )
+          continue
+        if len( unique( hmm2_distances ) ) / len( hmm2_distances ) < DEGEN_THRESHOLD :
+          LOG.write( '    {g2} is degenerate, skipping.\n'.format( g2=hmm2_name ) )
+          continue
+        
+        hmm1_skew = skew( hmm1_distances )
+        hmm2_skew = skew( hmm2_distances )
+        
+        hmm1_kurtosis = kurtosis( hmm1_distances )
+        hmm2_kurtosis = kurtosis( hmm2_distances )
+         
+        hmm1_stdev = stdev( hmm1_distances )
+        hmm2_stdev = stdev( hmm2_distances )
+         
+        r,pr = pearsonr(   hmm1_distances, hmm2_distances )
+        t,pt = kendalltau( hmm1_distances, hmm2_distances )
+        
+        bp_compat = bipartition_compatibility_ratio( T1, T2, links )
+        
+        data.append(  { 'hmm1'          : hmm1_name,
+                        'hmm2'          : hmm2_name,
+                        'hmm1_leafs'    : T1.n_leafs,
+                        'hmm2_leafs'    : T2.n_leafs,
+                        'links'         : len(links),
+                        'hmm1_skew'     : hmm1_skew,
+                        'hmm2_skew'     : hmm2_skew,
+                        'hmm1_kurtosis' : hmm1_kurtosis,
+                        'hmm2_kurtosis' : hmm2_kurtosis,
+                        'hmm1_stdev'    : hmm1_stdev,
+                        'hmm2_stdev'    : hmm2_stdev,
+                        'bp_ratio'      : bp_compat['ratio'],
+                        'bp_jaccard'    : bp_compat['jaccard'],
+                        'r'             : r,
+                        'pr'            : pr,
+                        'tau'           : t,
+                        'p_tau'         : pt,
+                        'cluster'       : int( params.cid ),
+                        'ANI'           : float( params.ani) } )
+      
+      if data :
+        LOG.write( 'writing records for {n} correlations...\n'.format( n=len( data ) ) )
+        polars.DataFrame( data ).write_csv( file=output[0], separator='\t' )
+      else :
+        LOG.write( 'no gene pairs exceed minimum link threshold, aborting.\n' )
