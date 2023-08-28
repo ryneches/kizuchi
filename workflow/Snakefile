@@ -369,11 +369,11 @@ rule build_clusters :
       geneseqs = { Path(fasta).stem.rsplit('_',1)[0] : { rec.id : rec
                                         for rec in parse( open( fasta ), 'fasta' ) }
                    for fasta in input.genes }
-
+      
       LOG.write( 'Genomes loaded :\n' )
       for genome in geneseqs.keys() :
         LOG.write( '    {genome} : {n}\n'.format( genome=genome, n=len(geneseqs[genome]) ) )
-
+      
       LOG.write( 'Genes loaded :\n' )
       for hmm in sequences.keys() :
         LOG.write( '    {hmm} : {n}\n'.format( hmm=hmm, n=len(sequences[hmm]) ) )
@@ -423,17 +423,23 @@ rule build_clusters :
       LOG.write( 'found {n} clusters.\n'.format( n=len( cluster_table.groupby('id').agg('seq_id') ) ) )
       
       if not os.path.exists( 'clusters' ) : os.mkdir( 'clusters' )
+
       for ANI,cids in cluster_table.groupby('ANI').agg( polars.col('cid').unique() ).sort('ANI').iter_rows() :
+        
         anipath = os.path.join( 'clusters', str(ANI) )
         if not os.path.exists( anipath ) : os.mkdir( anipath )
+        
         for cluster_id in cids :
+          
           clusterpath = os.path.join( anipath, str( cluster_id ) )
           if not os.path.exists( clusterpath ) : os.mkdir( clusterpath )
           genepath = os.path.join( clusterpath, 'genes' )
           if not os.path.exists( genepath ) : os.mkdir( genepath )
           hmms_written = set() # FIXME : workaround for post-checkpoint wildcard matching
-          for hmm,seq_ids,genomes in cluster_table.filter( ( polars.col('ANI') == ANI ) 
-                                                         & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
+          
+          for hmm,seq_ids,genomes in cluster_table.filter( ( polars.col('ANI') == ANI )
+                                                         & ( polars.col('cid') == cluster_id ) )
+                                                  .groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
             hmms_written.add( hmm ) # FIXME : workaround for post-checkpoint wildcard matching
             with open( os.path.join( genepath, hmm + '.fna' ), 'w' ) as f :
               for seq_id,genome in zip( seq_ids, genomes ) :

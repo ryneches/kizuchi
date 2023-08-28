@@ -1,16 +1,36 @@
+def cluster_data( wildcards ) :
+  
+  WC = glob_wildcards( os.path.join( 'clusters',
+                                     '{ani}',
+                                     '{cid}',
+                                     'genes',
+                                     '{hmm}.fna' ) )
+  
+  return expand( os.path.join( ck_output,
+                               '{ani}',
+                               '{cid}',
+                               'data.tsv' ),
+                 zip,
+                 ani=WC.ani,
+                 cid=WC.cid,
+                 hmm=WC.hmm )
+
+rule all :
+  input :
+    cluster_data
 
 rule clustalo :
   group : 'phylogenomics'
   input :
-    'clusters/{ani}/{cid}/genes/{ckhmm}.fna'
+    'clusters/{ani}/{cid}/genes/{hmm}.fna'
   output :
-    'clusters/{ani}/{cid}/alignments/{ckhmm}_aln.fna'
+    'clusters/{ani}/{cid}/alignments/{hmm}_aln.fna'
   params :
     extra=''
   log :
-    'logs/clustalo/{ani}_{cid}_{ckhmm}.log'
+    'logs/clustalo/{ani}_{cid}_{hmm}.log'
   benchmark :
-    'benchmarks/clustalo/{ani}_{cid}_{ckhmm}.tsv'
+    'benchmarks/clustalo/{ani}_{cid}_{hmm}.tsv'
   threads : THREADS
   resources :
     mem_mb = clustalo_memory
@@ -20,13 +40,13 @@ rule clustalo :
 rule trimal :
   group : 'phylogenomics'
   input :
-    'clusters/{ani}/{cid}/alignments/{ckhmm}_aln.fna'
+    'clusters/{ani}/{cid}/alignments/{hmm}_aln.fna'
   output :
-    'clusters/{ani}/{cid}/trimmed_alignments/{ckhmm}_aln.fna'
+    'clusters/{ani}/{cid}/trimmed_alignments/{hmm}_aln.fna'
   log :
-    'logs/trimal/{ani}_{cid}_{ckhmm}.log'
+    'logs/trimal/{ani}_{cid}_{hmm}.log'
   benchmark :
-    'benchmarks/trimal/{ani}_{cid}_{ckhmm}.tsv'
+    'benchmarks/trimal/{ani}_{cid}_{hmm}.tsv'
   params :
     extra = '-automated1'
   threads : THREADS
@@ -38,13 +58,13 @@ rule trimal :
 rule filter_alignments :
   group : 'phylogenomics'
   input :
-    'clusters/{ani}/{cid}/trimmed_alignments/{ckhmm}_aln.fna'
+    'clusters/{ani}/{cid}/trimmed_alignments/{hmm}_aln.fna'
   output :
-    'clusters/{ani}/{cid}/filtered_trimmed_alignments/{ckhmm}_aln.fna'
+    'clusters/{ani}/{cid}/filtered_trimmed_alignments/{hmm}_aln.fna'
   log :
-    'logs/filter_alignments/{ani}_{cid}_{ckhmm}.log'
+    'logs/filter_alignments/{ani}_{cid}_{hmm}.log'
   benchmark :
-    'benchmarks/filter_alignments/{ani}_{cid}_{ckhmm}.tsv'
+    'benchmarks/filter_alignments/{ani}_{cid}_{hmm}.tsv'
   run :
     if open( input[0] ).read().count( '>' ) < 3 :
       with open( log[0], 'w' ) as f :
@@ -69,13 +89,13 @@ rule filter_alignments :
 rule fasttree :
   group : 'phylogenomics'
   input :
-    alignment = 'clusters/{ani}/{cid}/filtered_trimmed_alignments/{ckhmm}_aln.fna'
+    alignment = 'clusters/{ani}/{cid}/filtered_trimmed_alignments/{hmm}_aln.fna'
   output :
-    tree = 'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk'
+    tree = 'clusters/{ani}/{cid}/trees/by_gene/{hmm}.nwk'
   log :
-    'logs/fasttree/{ani}_{cid}_{ckhmm}.log'
+    'logs/fasttree/{ani}_{cid}_{hmm}.log'
   benchmark :
-    'benchmarks/fasttree/{ani}_{cid}_{ckhmm}.tsv'
+    'benchmarks/fasttree/{ani}_{cid}_{hmm}.tsv'
   params :
     extra=''
   threads : THREADS
@@ -91,13 +111,13 @@ rule taxatrees :
   '''
   group : 'phylogenomics'
   input :
-    'clusters/{ani}/{cid}/trees/by_gene/{ckhmm}.nwk',
+    'clusters/{ani}/{cid}/trees/by_gene/{hmm}.nwk',
   output :
-    'clusters/{ani}/{cid}/trees/by_taxa/{ckhmm}.nwk',
+    'clusters/{ani}/{cid}/trees/by_taxa/{hmm}.nwk',
   log :
-    'logs/gene-taxa/{ani}_{cid}_{ckhmm}_mapping.txt',
+    'logs/gene-taxa/{ani}_{cid}_{hmm}_mapping.txt',
   benchmark :
-    'benchmarks/taxatrees/{ani}_{cid}_{ckhmm}.tsv'
+    'benchmarks/taxatrees/{ani}_{cid}_{hmm}.tsv'
   run :
     with open( log[0], 'w' ) as LOG :
       if not os.path.getsize( input[0] ) == 0 :
