@@ -76,7 +76,7 @@ mkdir -p logs/pbs
 
 # Initiating snakemake and running workflow in cluster mode
 snakemake                           \
-    --snakefile workflows/Snakefile2\
+    --snakefile workflow/Snakefile2 \
     --jobs 8                        \
     --profile config/pbs            \
     --latency-wait 20               \
