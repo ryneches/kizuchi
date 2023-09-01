@@ -26,7 +26,31 @@ configfile : 'config/config.yaml'
 
 from utils import clustalo_memory, trimal_memory, fasttree_memory
 
+HMMS_DIR    = config['hmm_dir']
+GENOMES_DIR = config['genome_dir']
+
+# minimum number of links per cluster for tree correlation
+MIN_CLUSTER_LINKS = config['min_cluster_links']
+
+# degenerate tree threshold : exclude pairwise tree-to-tree
+# comparisons where the ratio of non-unique leaf-to-leaf
+# distances exceeds this threshold
+DEGEN_THRESHOLD = config['degeneracy_threshold']
+
+# e-value threshold for HMM search
+EVALUE = config['evalue']
+
+# post-trimming aligned fraction threshold
+AFT = config['aligned_fraction_threshold']
+
+# threads to use when invoking multithreaded applications
 THREADS = config['threads']
+
+# cutoff thresholds for genome ANI clustering
+ANI_THRESHOLDS = linspace( config['ani_thresholds_min'],
+                           config['ani_thresholds_max'],
+                           config['ani_thresholds_n'] )
+
 
 def cluster_trees( wildcards ) :
   

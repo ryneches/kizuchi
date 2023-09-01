@@ -70,9 +70,6 @@ MIN_CLUSTER_LINKS = config['min_cluster_links']
 # distances exceeds this threshold
 DEGEN_THRESHOLD = config['degeneracy_threshold']
 
-# resource use projection functions : estimation of 
-# empirical constants can be found in docs/Benchmarks.ipynb
-  
 rule all :
   input :
     'cluster_filtering/clusters.tsv'

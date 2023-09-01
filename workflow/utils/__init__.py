@@ -1,6 +1,9 @@
 import os
 from Bio.SeqIO import parse
 
+# resource use projection functions : estimation of 
+# empirical constants can be found in docs/Benchmarks.ipynb
+
 def clustalo_memory( wildcards, attempt ) :
   a = 3e-5
   b = 0.4
