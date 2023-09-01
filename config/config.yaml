@@ -3,7 +3,7 @@ hmm_dir:     'data/hmms-enabled'
 genome_dir:  'data/genomes-enabled'
 
 # e-value threshold for HMM search
-evalue: 10e-3
+evalue: 1.0e-2
 
 # post-trimming aligned fraction threshold
 aligned_fraction_threshold: 0.75
