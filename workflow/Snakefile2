@@ -76,7 +76,7 @@ rule all :
     cluster_trees
 
 rule clustalo :
-  group : 'phylogenomics'
+  group : 'phylogenetics'
   input :
     'clusters/{ani}/{cid}/genes/{hmm}.fna'
   output :
@@ -94,7 +94,7 @@ rule clustalo :
     'file://wrappers/clustalo'
 
 rule trimal :
-  group : 'phylogenomics'
+  group : 'phylogenetics'
   input :
     'clusters/{ani}/{cid}/alignments/{hmm}_aln.fna'
   output :
@@ -112,7 +112,7 @@ rule trimal :
     'file://wrappers/trimal'
 
 rule filter_alignments :
-  group : 'phylogenomics'
+  group : 'phylogenetics'
   input :
     'clusters/{ani}/{cid}/trimmed_alignments/{hmm}_aln.fna'
   output :
@@ -143,7 +143,7 @@ rule filter_alignments :
           f.write( '' )
 
 rule fasttree :
-  group : 'phylogenomics'
+  group : 'phylogenetics'
   input :
     alignment = 'clusters/{ani}/{cid}/filtered_trimmed_alignments/{hmm}_aln.fna'
   output :
@@ -165,7 +165,7 @@ rule taxatrees :
   Prune trees to individual taxa using. Taxa are represented
   by the gene with the top-scoring HMM hit.
   '''
-  group : 'phylogenomics'
+  group : 'phylogenetics'
   input :
     'clusters/{ani}/{cid}/trees/by_gene/{hmm}.nwk',
   output :

@@ -79,7 +79,9 @@ snakemake                           \
     --snakefile workflow/Snakefile2 \
     --jobs 8                        \
     --profile config/pbs            \
-    --latency-wait 20               \
+    --latency-wait 5                \
+    --group-components              \
+        phylogenetics=24            \
 
 # Printing out job summary
 qstat -f $PBS_JOBID
