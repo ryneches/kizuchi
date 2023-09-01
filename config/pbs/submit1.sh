@@ -77,9 +77,9 @@ mkdir -p logs/pbs
 # Initiating snakemake and running workflow in cluster mode
 snakemake                           \
     --snakefile workflow/Snakefile  \
-    --jobs 8                        \
+#   --jobs 8                        \
     --profile config/pbs            \
-    --latency-wait 20               \
+    --latency-wait 5                \
     --group-components              \
         gene_prediction=32          \
         ani=4                       \

@@ -77,11 +77,11 @@ mkdir -p logs/pbs
 # Initiating snakemake and running workflow in cluster mode
 snakemake                           \
     --snakefile workflow/Snakefile2 \
-    --jobs 8                        \
+#   --jobs 8                        \
     --profile config/pbs            \
     --latency-wait 5                \
     --group-components              \
-        phylogenetics=24            \
+        phylogenetics=16            \
 
 # Printing out job summary
 qstat -f $PBS_JOBID
