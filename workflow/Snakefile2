@@ -1,4 +1,13 @@
-def cluster_data( wildcards ) :
+include : 'Importer'
+
+# load configuration
+configfile : 'config/config.yaml'
+
+from utils import clustalo_memory, trimal_memory, fasttree_memory
+
+THREADS = config['threads']
+
+def cluster_trees( wildcards ) :
   
   WC = glob_wildcards( os.path.join( 'clusters',
                                      '{ani}',
@@ -6,10 +15,12 @@ def cluster_data( wildcards ) :
                                      'genes',
                                      '{hmm}.fna' ) )
   
-  return expand( os.path.join( ck_output,
+  return expand( os.path.join( 'clusters',
                                '{ani}',
                                '{cid}',
-                               'data.tsv' ),
+                               'trees',
+                               'by_gene',
+                               '{hmm}.nwk' ),
                  zip,
                  ani=WC.ani,
                  cid=WC.cid,
@@ -17,7 +28,7 @@ def cluster_data( wildcards ) :
 
 rule all :
   input :
-    cluster_data
+    cluster_trees
 
 rule clustalo :
   group : 'phylogenomics'
@@ -152,7 +163,7 @@ rule taxatrees :
 rule clusterdata :
   group : 'phylogenomics'
   input :
-    trees = get_cluster_trees
+    trees = 'clusters/{ani}/{cid}/trees/by_gene/{hmm}.nwk'
   output :
     table = 'clusters/{ani}/{cid}/data.tsv'
   params :

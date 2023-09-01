@@ -1,26 +1,25 @@
-name: kizuchi
-channels:
-  - conda-forge
-  - bioconda
-  - defaults
-dependencies:
-  - numpy
-  - scipy
-  - biopython
-  - pandas
-  - polars
-  - clustalo
-  - cd-hit
-  - hmmer
-  - snakemake
-  - prodigal-gv
-  - fasttree
-  - fastani
-  - trimal
-  - pip
-  - pip:
-    - SuchTree
-    - dendropy
-    - hmm-profile
-    - cdhit-reader
-    - hmm_profile
+# input data
+hmm_dir:     'data/hmms-enabled'
+genome_dir:  'data/genomes-enabled'
+
+# e-value threshold for HMM search
+evalue: 10e-3
+
+# post-trimming aligned fraction threshold
+aligned_fraction_threshold: 0.75
+
+# threads to use when invoking multithreaded applications
+threads: 1
+
+# cutoff thresholds for genome ANI clustering
+ani_thresholds_min: 75
+ani_thresholds_max: 99
+ani_thresholds_n:   25
+
+# minimum number of links per cluster for tree correlation
+min_cluster_links: 5
+
+# degenerate tree threshold : exclude pairwise tree-to-tree
+# comparisons where the ratio of non-unique leaf-to-leaf
+# distances exceeds this threshold
+degeneracy_threshold: 0.5

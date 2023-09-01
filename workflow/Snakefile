@@ -1,3 +1,5 @@
+include : 'Importer'
+
 # load configuration
 configfile : 'config/config.yaml'
 
@@ -18,8 +20,8 @@ from scipy.stats import kendalltau, pearsonr, skew, kurtosis
 from statistics import stdev
 from SuchTree import SuchTree, SuchLinkedTrees
 
-HMMS_DIR    = 'data/hmms-enabled'
-GENOMES_DIR = 'data/genomes-enabled'
+HMMS_DIR    = config['hmm_dir']
+GENOMES_DIR = config['genome_dir']
 
 # index data inputs
 HMM_FILES    = glob_wildcards( os.path.join( HMMS_DIR, '{hmm}.hmm' ) )
@@ -42,30 +44,27 @@ Q = GENOMES[len(GENOMES)//2:]
 # gene pair lists
 HMMS1,HMMS2 = list( zip( *combinations( HMMS, 2 ) ) )
 
-# cluster checkpoint wildcards
-#CKANIS = None
-#CKCIDS = None
-#CKHMMS = None
-
 # e-value threshold for HMM search
-EVALUE = 10e-3
+EVALUE = config['evalue']
 
 # post-trimming aligned fraction threshold
-AFT = 0.75
+AFT = config['aligned_fraction_threshold']
 
 # threads to use when invoking multithreaded applications
-THREADS=1
+THREADS = config['threads']
 
 # cutoff thresholds for genome ANI clustering
-ANI_THRESHOLDS = linspace( 75, 99, 25 )
+ANI_THRESHOLDS = linspace( config['ani_thresholds_min'],
+                           config['ani_thresholds_max'],
+                           config['ani_thresholds_n'] )
 
 # minimum number of links per cluster for tree correlation
-MIN_CLUSTER_LINKS = 5
+MIN_CLUSTER_LINKS = config['min_cluster_links']
 
 # degenerate tree threshold : exclude pairwise tree-to-tree
 # comparisons where the ratio of non-unique leaf-to-leaf
 # distances exceeds this threshold
-DEGEN_THRESHOLD = 0.5
+DEGEN_THRESHOLD = config['degeneracy_threshold']
 
 # resource use projection functions : estimation of 
 # empirical constants can be found in docs/Benchmarks.ipynb
@@ -437,9 +436,7 @@ rule build_clusters :
           if not os.path.exists( genepath ) : os.mkdir( genepath )
           hmms_written = set() # FIXME : workaround for post-checkpoint wildcard matching
           
-          for hmm,seq_ids,genomes in cluster_table.filter( ( polars.col('ANI') == ANI )
-                                                         & ( polars.col('cid') == cluster_id ) )
-                                                  .groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
+          for hmm,seq_ids,genomes in cluster_table.filter( ( polars.col('ANI') == ANI ) & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
             hmms_written.add( hmm ) # FIXME : workaround for post-checkpoint wildcard matching
             with open( os.path.join( genepath, hmm + '.fna' ), 'w' ) as f :
               for seq_id,genome in zip( seq_ids, genomes ) :

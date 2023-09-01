@@ -1,0 +1,26 @@
+onstart:
+  import shutil
+  from pathlib import Path
+  path = Path().absolute()
+  if (src_path := path / 'workflow/utils').exists():
+    dst_path = path / '.snakemake/scripts/workflow/utils'
+    dst_path.mkdir(exist_ok=True, parents=True)
+    for file in src_path.rglob("*"):
+      dst_file = file.relative_to(src_path)
+      if str(dst_file).startswith("."):
+        continue
+      if file.is_dir():
+        (dst_path / dst_file).mkdir(parents=False, exist_ok=True)
+      else:
+        try:
+          shutil.copy2(src=file, dst=dst_path / dst_file)
+        except shutil.SameFileError:
+          pass
+    (path / '.snakemake/scripts/workflow/__init__.py').touch()
+
+onsuccess:
+  import shutil
+  from pathlib import Path
+  path = Path().absolute() / '.snakemake/scripts/workflow'
+  if path.exists():
+    shutil.rmtree(path)
