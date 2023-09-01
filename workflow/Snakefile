@@ -3,6 +3,10 @@ include : 'Importer'
 # load configuration
 configfile : 'config/config.yaml'
 
+from utils import parse_hmmsearch
+from utils import bipartition_compatibility, bipartition_compatibility_ratio
+from utils import find_links
+
 import os, pandas, polars, dendropy
 from pathlib import Path
 from copy import deepcopy
@@ -434,10 +438,8 @@ rule build_clusters :
           if not os.path.exists( clusterpath ) : os.mkdir( clusterpath )
           genepath = os.path.join( clusterpath, 'genes' )
           if not os.path.exists( genepath ) : os.mkdir( genepath )
-          hmms_written = set() # FIXME : workaround for post-checkpoint wildcard matching
           
           for hmm,seq_ids,genomes in cluster_table.filter( ( polars.col('ANI') == ANI ) & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
-            hmms_written.add( hmm ) # FIXME : workaround for post-checkpoint wildcard matching
             with open( os.path.join( genepath, hmm + '.fna' ), 'w' ) as f :
               for seq_id,genome in zip( seq_ids, genomes ) :
                 orig_seq_id = seq_id.rsplit('_',1)[0] # remove hmmer evalue rank
