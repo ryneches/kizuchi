@@ -82,6 +82,7 @@ snakemake                           \
     --latency-wait 5                \
     --group-components              \
         phylogenetics=16            \
+        phylogenomics=1             \
 
 # Printing out job summary
 qstat -f $PBS_JOBID
