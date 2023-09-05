@@ -84,6 +84,12 @@ snakemake                           \
         phylogenetics=16            \
         phylogenomics=1             \
 
+snakemake                           \
+    --snakefile workflow/Snakefile2 \
+    --latency-wait 5                \
+    --profile config/pbs            \
+    --jobs 16
+
 # Printing out job summary
 qstat -f $PBS_JOBID
 
