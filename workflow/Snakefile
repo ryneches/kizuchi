@@ -6,6 +6,7 @@ configfile : 'config/config.yaml'
 from utils import parse_hmmsearch
 from utils import bipartition_compatibility, bipartition_compatibility_ratio
 from utils import find_links
+from utils import batched
 
 import os, pandas, polars, dendropy
 from pathlib import Path
@@ -30,6 +31,9 @@ GENOMES_DIR = config['genome_dir']
 # index data inputs
 HMM_FILES    = glob_wildcards( os.path.join( HMMS_DIR, '{hmm}.hmm' ) )
 GENOME_FILES = glob_wildcards( os.path.join( GENOMES_DIR, '{fasta}.fna' ) )
+
+# aggregate genomes into chunks
+CHUNKS = [ 'chunk_{i}'.format(i=str(i)) for i in range( workflow.cores ) ]
 
 # extract the {hmm} values into a list
 HMMS    = HMM_FILES.hmm
@@ -131,6 +135,29 @@ rule hmmr_summary :
                                                                    b=hitlist[protein]['bitscore'] ) )
             else :
               f.write( '      protien {m} : {p}\n'.format( m=m+1, p=protein ) )
+
+rule aggregate :
+  group : 'gene_prediction'
+  input :
+    fastas=expand( 'data/genomes-enabled/{fasta}.fna', fasta=GENOMES ),
+  output :
+    chunks=expand( 'aggregated_genomes/{chunk}.fna', chunk=CHUNKS ),
+  log :
+    'logs/aggregate/aggregate.log',
+  run :
+    with open( log[0], 'w' ) as LOG :
+      fasta_chunks = batched( input.fastas, size=len(input.fastas)//workflow.cores )
+      if not os.path.exists( 'aggregated_genomes' ) : os.mkdir( 'aggregated_genomes' )
+      for n,chunk in enumerate( fasta_chunks ) :
+        chunkpath = os.path.join( 'aggregated_genomes',
+                                  'chunk_{n}.fna'.format(n=str(n) ) ) 
+        LOG.write( 'writing {chunk}...\n'.format( chunk=chunkpath ) )
+        with open( chunkpath, 'w' ) as f :
+          for genome in chunk :
+            for i,seq in enumerate( parse( open( genome ), 'fasta' ) ) :
+              seq.id = Path(genome).stem + '_contig_' + str(i)
+              f.write( seq.format('fasta') )
+            LOG.write( '   wrote {i} genomes'.format( i=str(i) ) )
 
 rule prodigal :
   group : 'gene_prediction'

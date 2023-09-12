@@ -1,5 +1,12 @@
 import os
 from Bio.SeqIO import parse
+from itertools import chain, islice
+
+# itertools.batched won't be available until 3.12.
+def batched( iterable, size=10 ) :
+  iterator = iter(iterable)
+  for first in iterator :
+    yield chain( [first], islice( iterator, size - 1 ) )
 
 # resource use projection functions : estimation of 
 # empirical constants can be found in docs/Benchmarks.ipynb
