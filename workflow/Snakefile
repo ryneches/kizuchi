@@ -156,21 +156,21 @@ rule aggregate :
           for genome in chunk :
             for i,seq in enumerate( parse( open( genome ), 'fasta' ) ) :
               seq.id = Path(genome).stem + '_contig_' + str(i)
+              seq.description = ''
               f.write( seq.format('fasta') )
             LOG.write( '   wrote {i} genomes'.format( i=str(i) ) )
 
 rule prodigal :
   group : 'gene_prediction'
   input :
-    fna='data/genomes-enabled/{fasta}.fna', 
+    fna='aggregated_genomes/{chunk}.fna', 
   output :
-    faa='proteins/{fasta}_genes.faa',
-    fna='genes/{fasta}_genes.fna',
-    #gff='proteins/{fasta}_genes.gff',
+    faa='proteins/{chunk}_genes.faa',
+    fna='genes/{chunk}_genes.fna',
   log :
-    'logs/prodigal/{fasta}.log',
+    'logs/prodigal/{chunk}.log',
   benchmark :
-    'benchmarks/prodigal/{fasta}.tsv'
+    'benchmarks/prodigal/{chunk}.tsv'
   params :
     extra='',
   wrapper :
@@ -199,14 +199,14 @@ rule hmmdb :
 rule hmmer :
   group : 'gene_prediction'
   input :
-    fasta   = 'proteins/{fasta}_genes.faa',
+    fasta   = 'proteins/{chunk}.faa',
     profile = 'hmmdb/models.hmm'
   log :
-    'logs/hmmer/{fasta}.log',
+    'logs/hmmer/{chunk}.log',
   benchmark :
-    'benchmarks/hmmer/{fasta}.tsv'
+    'benchmarks/hmmer/{chunk}.tsv'
   output :
-    tblout         = 'hmm_hits/{fasta}_prot_tbl.txt',
+    tblout         = 'hmm_hits/{chunk}_prot_tbl.txt',
     #domtblout      = 'hmm_hits/{fasta}_{hmm}_prot_dom_tbl.txt',
     #alignment_hits = 'hmm_hits/{fasta}_{hmm}_alg_hits.txt',
     #outfile        = 'hmm_hits/{fasta}_{hmm}_prot.txt'
