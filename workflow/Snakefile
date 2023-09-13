@@ -165,8 +165,8 @@ rule prodigal :
   input :
     fna='aggregated_genomes/{chunk}.fna', 
   output :
-    faa='proteins/{chunk}_genes.faa',
-    fna='genes/{chunk}_genes.fna',
+    faa='proteins/{chunk}.faa',
+    fna='genes/{chunk}.fna',
   log :
     'logs/prodigal/{chunk}.log',
   benchmark :
@@ -216,9 +216,9 @@ rule hmmer :
 rule scoring :
   input :
     # for each HMM...
-    hits    = expand( 'hmm_hits/{fasta}_prot_tbl.txt', fasta=GENOMES ),
+    hits    = expand( 'hmm_hits/{chunk}_prot_tbl.txt', chunk=CHUNKS ),
     # ... score orthologs for each genome...
-    faa     = expand( 'proteins/{fasta}_genes.faa', fasta=GENOMES ),
+    faa     = expand( 'proteins/{chunk}.faa', chunk=CHUNKS ),
     profile = 'hmmdb/models.hmm'
   output :
     prealign = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS )
@@ -370,7 +370,7 @@ rule ani_clusters :
 rule build_clusters :
   input :
     prealignments = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS ),
-    genes         = expand( 'genes/{fasta}_genes.fna', fasta=GENOMES ),
+    genes         = expand( 'genes/{chunk}.fna', chunk=CHUNKS ),
     ani_clusters  = expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS )
   output :
     cluster_table = 'cluster_filtering/clusters.tsv',
