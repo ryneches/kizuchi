@@ -11,7 +11,8 @@ from utils import batched
 import os, pandas, polars, dendropy
 from pathlib import Path
 from copy import deepcopy
-from hmm_profile import reader, writer
+from hmm_profile import reader as hmmreader
+from hmm_profile import writer as hmmwriter
 from cdhit_reader import read_cdhit
 from Bio.SeqIO import parse
 from Bio import AlignIO, SearchIO
@@ -189,12 +190,12 @@ rule hmmdb :
   run :
     profiles = []
     for hmmfile in input.hmms :
-      hmm = reader.read_single( open( hmmfile ) )
+      hmm = hmmreader.read_single( open( hmmfile ) )
       if Path(hmmfile).stem != hmm.metadata.model_name :
         raise Exception( 'file name ({hmmfile}) must match model name ({modelname}).'.format(
                           hmmfile=hmmfile, modelname=hmm.metadata.model_name ) )
       profiles.append( hmm ) 
-    writer.save_many_to_file( hmms=profiles, output=output.db )
+    hmmwriter.save_many_to_file( hmms=profiles, output=output.db )
 
 rule hmmer :
   group : 'gene_prediction'
