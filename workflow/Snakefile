@@ -87,8 +87,8 @@ rule clean :
   shell :
     'rm -rf aggregated_genomes proteins genes \
         hmm_hits hmmdb preani ani ani_clusters \
-        scored_proteins cluster_filtering \
-        clusters statistics benchmarks logs'
+        scored_proteins cluster_data clusters \
+        statistics benchmarks logs'
 
 rule aggregate :
   group : 'gene_prediction'
