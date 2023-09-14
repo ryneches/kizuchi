@@ -14,7 +14,7 @@
 ####    type, too.
 
 #PBS -l nodes=1:ppn=1,pmem=10000mb
-#PBS -l walltime=8:00:00
+#PBS -l walltime=24:00:00
 
 ####  Flux account and queue specification here
 ####    These will change if you work on multiple projects, or need
