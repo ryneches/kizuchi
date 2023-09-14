@@ -10,6 +10,7 @@ aligned_fraction_threshold: 0.75
 
 # threads to use when invoking multithreaded applications
 threads: 1
+ani_threads:8
 
 # chunks to split the genome data into
 chunks: 256

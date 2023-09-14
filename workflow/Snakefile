@@ -62,6 +62,8 @@ AFT = config['aligned_fraction_threshold']
 # threads to use when invoking multithreaded applications
 THREADS = config['threads']
 
+ANI_THREADS = config['ani_threads']
+
 # cutoff thresholds for genome ANI clustering
 ANI_THRESHOLDS = linspace( config['ani_thresholds_min'],
                            config['ani_thresholds_max'],
@@ -103,13 +105,15 @@ rule aggregate :
                                   'chunk_{n}.fna'.format(n=str(n) ) ) 
         LOG.write( 'writing {chunk}...\n'.format( chunk=chunkpath ) )
         with open( chunkpath, 'w' ) as f :
+          contigs = 0
           for i,genome in enumerate( chunk ) :
             for j,seq in enumerate( parse( open( genome ), 'fasta' ) ) :
               seq.id = Path(genome).stem + '_contig_' + str(j)
               seq.description = ''
               f.write( seq.format('fasta') )
+            contigs = contigs + j
           LOG.write( '   wrote {i} genomes with {j} contigs\n'.format( i=str(i+1),
-                                                                       j=str(j+1) ) )
+                                                                       j=str(contigs+1) ) )
 
 rule prodigal :
   group : 'gene_prediction'
@@ -259,7 +263,7 @@ rule fastani :
     'logs/fastani/fastani.log'
   benchmark :
     'benchmarks/fastani/fastani.tsv'
-  threads : THREADS
+  threads : ANI_THREADS
   wrapper :
     'file://wrappers/fastani'
 
