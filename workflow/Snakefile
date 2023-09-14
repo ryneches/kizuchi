@@ -34,11 +34,7 @@ HMM_FILES    = glob_wildcards( os.path.join( HMMS_DIR, '{hmm}.hmm' ) )
 GENOME_FILES = glob_wildcards( os.path.join( GENOMES_DIR, '{fasta}.fna' ) )
 
 # aggregate genomes into chunks
-CHUNKS = [ 'chunk_{i}'.format(i=str(i)) for i in range( workflow.cores ) ]
-
-# NOTE : When restarting this workflow, the same numberof cores must
-#        be specified as in previous runs. Otherwise, the chunking
-#        will be wrong.
+CHUNKS = [ 'chunk_{i}'.format(i=str(i)) for i in range( config['chunks'] ) ]
 
 # extract the {hmm} values into a list
 HMMS    = HMM_FILES.hmm
@@ -100,7 +96,7 @@ rule aggregate :
     'logs/aggregate/aggregate.log',
   run :
     with open( log[0], 'w' ) as LOG :
-      fasta_chunks = batched( input.fastas, size=len(input.fastas)//workflow.cores )
+      fasta_chunks = batched( input.fastas, size=len(input.fastas)//config['chunks'] )
       if not os.path.exists( 'aggregated_genomes' ) : os.mkdir( 'aggregated_genomes' )
       for n,chunk in enumerate( fasta_chunks ) :
         chunkpath = os.path.join( 'aggregated_genomes',
