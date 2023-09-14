@@ -103,12 +103,13 @@ rule aggregate :
                                   'chunk_{n}.fna'.format(n=str(n) ) ) 
         LOG.write( 'writing {chunk}...\n'.format( chunk=chunkpath ) )
         with open( chunkpath, 'w' ) as f :
-          for genome in chunk :
-            for i,seq in enumerate( parse( open( genome ), 'fasta' ) ) :
-              seq.id = Path(genome).stem + '_contig_' + str(i)
+          for i,genome in enumerate( chunk ) :
+            for j,seq in enumerate( parse( open( genome ), 'fasta' ) ) :
+              seq.id = Path(genome).stem + '_contig_' + str(j)
               seq.description = ''
               f.write( seq.format('fasta') )
-            LOG.write( '   wrote {i} genomes'.format( i=str(i) ) )
+          LOG.write( '   wrote {i} genomes with {j} contigs\n'.format( i=str(i+1),
+                                                                       j=str(j+1) ) )
 
 rule prodigal :
   group : 'gene_prediction'
