@@ -340,7 +340,7 @@ rule ani_clusters :
         all_clusters[T] = ani_clusters
       
       # write genome ANI cluster files
-      outfiles = { Path(p).stem.rsplit('_',1)[1] : p for p in output.clusterfiles }
+      outfiles = { t : p for t,p in zip( params.ani_cutoffs, output.clusterfiles ) }
       LOG.write( outfiles )
       for ani_cutoff,ani_clusters in all_clusters.items() :
         with open( outfiles[ani_cutoff], 'w' ) as f :
