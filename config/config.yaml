@@ -16,9 +16,10 @@ ani_threads: 8
 chunks: 256
 
 # cutoff thresholds for genome ANI clustering
-ani_thresholds_min: 75
-ani_thresholds_max: 99
-ani_thresholds_n:   25
+ani_thresholds_min: 77   # minimum ANI cutoff
+ani_thresholds_max: 100  # maximum ANI cutoff
+ani_thresholds_n:   23   # number of ANI thresholds to consider
+ani_min_aln:        5    # minumum number of bidirectional fragment mappings
 
 # minimum number of links per cluster for tree correlation
 min_cluster_links: 5
