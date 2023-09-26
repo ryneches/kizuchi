@@ -277,7 +277,7 @@ rule ani_clusters :
     min_ani = config['ani_thresholds_min'],
     max_ani = config['ani_thresholds_max'],
     min_aln = config['ani_min_aln'],
-    ani_cutoff = ANI_THRESHOLDS,
+    ani_cutoffs = ANI_THRESHOLDS,
   log :
     expand( 'logs/ani_clusters/{ani_cutoff}.log', ani_cutoff=ANI_THRESHOLDS )
   benchmark :
