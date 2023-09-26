@@ -272,74 +272,81 @@ rule ani_clusters :
   input :
     ani = 'ani/ani.tsv',
   output :
-    expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS )
+    clusterfiles = expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS )
   params :
     min_ani = config['ani_thresholds_min'],
     max_ani = config['ani_thresholds_max'],
     min_aln = config['ani_min_aln'],
     ani_cutoffs = ANI_THRESHOLDS,
   log :
-    expand( 'logs/ani_clusters/{ani_cutoff}.log', ani_cutoff=ANI_THRESHOLDS )
+    'logs/ani_clusters/ani_clusters.log'
   benchmark :
     'benchmarks/ani_clusters/ani_cutoffs.txt',
   run :
-    header = [ 'query', 'reference', 'ANI', 
-               'bidirectional fragment mappings',
-               'total query fragments' ]
-    
-    fastani = polars.read_csv( '../kizuchi/ani/ani.tsv', separator='\t', has_header=False )
-    fastani.columns = header
-    
-    # file names -> genome names
-    fastani = fastani.with_columns( fastani.map_rows( lambda t : Path(t[0]).stem )['map'].alias('query') )
-    fastani = fastani.with_columns( fastani.map_rows( lambda t : Path(t[1]).stem )['map'].alias('reference') )
-    
-    # %ID -> distance
-    fastani = fastani.with_columns( fastani.select( 1 - polars.col('ANI') / 100 )['literal'].alias('distance') )
-
-    # drop NaNs
-    fastani = fastani.filter( polars.all_horizontal( polars.selectors.float().is_not_nan() ) )
-    
-    filteredani = fastani.filter( ( polars.col('ANI') <= params.max_ani )
-                                & ( polars.col('ANI') >= params.min_ani )
-                                & ( polars.col('bidirectional fragment mappings') >= params.min_aln ) )
-    
-    # make some indexes
-    genomes = list( set( filteredani['query'] ) | set( filteredani['reference'] ) )
-    genome_index = { g:n for n,g in enumerate( genomes ) }
-    
-    # allocate the empty matrix
-    D = zeros( ( len(genomes), len(genomes) ) )
-    D.fill( 1.0 )
-    
-    # set self-distance to zero
-    for i in range(len(genomes)) :
-      D[i,i] = 0.0
-    
-    # populate distance matrix with filtered ANI hits
-    for query,reference,ani,bfm,tqf,d in filteredani.iter_rows() :
-      i = genome_index[ query ]
-      j = genome_index[ reference ]
-      D[i,j] = D[j,i] = d
-    
-    # single linkage clustering at each ANI threshold
-    all_clusters = {}
-    for T in params.ani_cutoffs :
-      threshold = 1 - (  T / 100 )
-      ani_clusters = defaultdict(list)
-      for n,c in enumerate( fcluster( single( squareform(D) ),
-                            threshold,
-                            criterion='distance' ) ) :
-        ani_clusters[c].append( genomes[n] )
-      all_clusters[T] = ani_clusters
-    
-    # write genome ANI cluster files
-    outfiles = { Path(p).stem.rsplit('_',1)[1] : p for p in output[0] }
-    for ani_cutoff,ani_clusters in all_clusters.items() :
-      with open( outfiles[ani_cutoff], 'w' ) as f :
-        for cid,cluster_genomes in ani_clusters.items() :
-          f.write( '{cid}\t{genomes}\n'.format( cid=str(cid),
-                                                genomes=','.join(cluster_genomes) ) )
+    with open( log[0], 'w' ) as LOG :
+      header = [ 'query', 'reference', 'ANI', 
+                 'bidirectional fragment mappings',
+                 'total query fragments' ]
+      
+      fastani = polars.read_csv( '../kizuchi/ani/ani.tsv', separator='\t', has_header=False )
+      fastani.columns = header
+      
+      LOG.write( 'found {n} ANI hits.\n'.format( n=str(len(fastani)) )
+      
+      # file names -> genome names
+      fastani = fastani.with_columns( fastani.map_rows( lambda t : Path(t[0]).stem )['map'].alias('query') )
+      fastani = fastani.with_columns( fastani.map_rows( lambda t : Path(t[1]).stem )['map'].alias('reference') )
+      
+      # %ID -> distance
+      fastani = fastani.with_columns( fastani.select( 1 - polars.col('ANI') / 100 )['literal'].alias('distance') )
+      
+      # drop NaNs
+      fastani = fastani.filter( polars.all_horizontal( polars.selectors.float().is_not_nan() ) )
+      
+      filteredani = fastani.filter( ( polars.col('ANI') <= params.max_ani )
+                                  & ( polars.col('ANI') >= params.min_ani )
+                                  & ( polars.col('bidirectional fragment mappings') >= params.min_aln ) )
+      
+      LOG.write( 'found {n} ANI hits that meet filtering criteria.\n'.format( n=str(len(filteredani)) )
+      
+      # make some indexes
+      genomes = list( set( filteredani['query'] ) | set( filteredani['reference'] ) )
+      genome_index = { g:n for n,g in enumerate( genomes ) }
+      
+      # allocate the empty matrix
+      D = zeros( ( len(genomes), len(genomes) ) )
+      D.fill( 1.0 )
+      
+      # set self-distance to zero
+      for i in range(len(genomes)) :
+        D[i,i] = 0.0
+      
+      # populate distance matrix with filtered ANI hits
+      for query,reference,ani,bfm,tqf,d in filteredani.iter_rows() :
+        i = genome_index[ query ]
+        j = genome_index[ reference ]
+        D[i,j] = D[j,i] = d
+      
+      # single linkage clustering at each ANI threshold
+      all_clusters = {}
+      for T in params.ani_cutoffs :
+        threshold = 1 - (  T / 100 )
+        ani_clusters = defaultdict(list)
+        for n,c in enumerate( fcluster( single( squareform(D) ),
+                              threshold,
+                              criterion='distance' ) ) :
+          ani_clusters[c].append( genomes[n] )
+        LOG.write( 'found {n} clusters at ANI>{t}.\n'.format( n=str(n), t=str(T) ) )
+        all_clusters[T] = ani_clusters
+      
+      # write genome ANI cluster files
+      outfiles = { Path(p).stem.rsplit('_',1)[1] : p for p in output.clusterfiles }
+      LOG.write( outfiles )
+      for ani_cutoff,ani_clusters in all_clusters.items() :
+        with open( outfiles[ani_cutoff], 'w' ) as f :
+          for cid,cluster_genomes in ani_clusters.items() :
+            f.write( '{cid}\t{genomes}\n'.format( cid=str(cid),
+                                                  genomes=','.join(cluster_genomes) ) )
 
 
 rule build_clusters :
