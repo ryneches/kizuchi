@@ -80,6 +80,7 @@ snakemake                           \
     --jobs 8                        \
     --profile config/pbs            \
     --latency-wait 5                \
+    --rerun-incomplete              \
     --group-components              \
         gene_prediction=32          \
         ani=4                       \
