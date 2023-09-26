@@ -291,7 +291,7 @@ rule ani_clusters :
       fastani = polars.read_csv( '../kizuchi/ani/ani.tsv', separator='\t', has_header=False )
       fastani.columns = header
       
-      LOG.write( 'found {n} ANI hits.\n'.format( n=str(len(fastani)) )
+      LOG.write( 'found {n} ANI hits.\n'.format( n=str(len(fastani)) ) ) 
       
       # file names -> genome names
       fastani = fastani.with_columns( fastani.map_rows( lambda t : Path(t[0]).stem )['map'].alias('query') )
@@ -307,7 +307,7 @@ rule ani_clusters :
                                   & ( polars.col('ANI') >= params.min_ani )
                                   & ( polars.col('bidirectional fragment mappings') >= params.min_aln ) )
       
-      LOG.write( 'found {n} ANI hits that meet filtering criteria.\n'.format( n=str(len(filteredani)) )
+      LOG.write( 'found {n} ANI hits that meet filtering criteria.\n'.format( n=str(len(filteredani)) ) )
       
       # make some indexes
       genomes = list( set( filteredani['query'] ) | set( filteredani['reference'] ) )
