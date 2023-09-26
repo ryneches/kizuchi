@@ -336,12 +336,12 @@ rule ani_clusters :
                               threshold,
                               criterion='distance' ) ) :
           ani_clusters[c].append( genomes[n] )
-        LOG.write( 'found {n} clusters at ANI>{t}.\n'.format( n=str(n), t=str(T) ) )
+        LOG.write( 'found {n} clusters at ANI>{t}.\n'.format( n=str(len(ani_clusters)),
+                                                              t=str(T) ) )
         all_clusters[T] = ani_clusters
       
       # write genome ANI cluster files
-      outfiles = { Path(p).stem.rsplit('_',1)[1] : p for p in output.clusterfiles }
-      LOG.write( outfiles )
+      outfiles = { t : p for t,p in zip( params.ani_cutoffs, output.clusterfiles ) }
       for ani_cutoff,ani_clusters in all_clusters.items() :
         with open( outfiles[ani_cutoff], 'w' ) as f :
           for cid,cluster_genomes in ani_clusters.items() :
