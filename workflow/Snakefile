@@ -334,9 +334,9 @@ rule ani_clusters :
       all_clusters[T] = ani_clusters
     
     # write genome ANI cluster files
+    outfiles = { Path(p).stem.rsplit('_',1)[1] : p for p in output[0] }
     for ani_cutoff,ani_clusters in all_clusters.items() :
-      with open( os.path.join( outdir, 
-                               'ani_clusters_' + str(ani_cutoff) + '.txt' ), 'w' ) as f :
+      with open( os.path.join( outfiles[ani_cutoff], 'w' ) as f :
         for cid,cluster_genomes in ani_clusters.items() :
           f.write( '{cid}\t{genomes}\n'.format( cid=str(cid),
                                                 genomes=','.join(cluster_genomes) ) )
