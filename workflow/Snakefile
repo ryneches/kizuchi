@@ -27,25 +27,20 @@ from scipy.stats import kendalltau, pearsonr, skew, kurtosis
 from statistics import stdev
 from SuchTree import SuchTree, SuchLinkedTrees
 
-HMMS_DIR    = config['hmm_dir']
-GENOMES_DIR = config['genome_dir']
+HMMS_DIR         = config['hmm_dir']
+GENOME_BATCH_DIR = config['genome_batch_dir']
+#GENOMES_DIR      = config['genome_dir']
 
 # index data inputs
-HMM_FILES    = glob_wildcards( os.path.join( HMMS_DIR, '{hmm}.hmm' ) )
-GENOME_FILES = glob_wildcards( os.path.join( GENOMES_DIR, '{fasta}.fna' ) )
-
-# aggregate genomes into chunks
-CHUNKS = [ 'chunk_{i}'.format(i=str(i)) for i in range( config['chunks'] ) ]
+HMM_FILES      = glob_wildcards( os.path.join( HMMS_DIR, '{hmm}.hmm' ) )
+GENOME_BATCHES = glob_wildcards( os.path.join( GENOME_BATCH_DIR, '{fasta}.fna' ) )
+#GENOME_FILES   = glob_wildcards( os.path.join( GENOMES_DIR, '{fasta}.fna' ) )
 
 # extract the {hmm} values into a list
 HMMS    = HMM_FILES.hmm
 
 # extract the {fasta} values into a list
-GENOMES = GENOME_FILES.fasta
-
-# genome fasta paths
-GENOME_PATHS = { genome : os.path.join( GENOMES_DIR, genome + '.fna' ) 
-                 for genome in GENOMES }
+GENOMES = GENOME_BATCHES.fasta
 
 # reference and query set for fastANI
 R = GENOMES[:len(GENOMES)//2]
@@ -92,39 +87,10 @@ rule clean :
         scored_proteins cluster_data clusters \
         statistics benchmarks logs'
 
-rule aggregate :
-  group : 'gene_prediction'
-  input :
-    fastas=expand( 'data/genomes-enabled/{fasta}.fna', fasta=GENOMES ),
-  output :
-    chunks=expand( 'aggregated_genomes/{chunk}.fna', chunk=CHUNKS ),
-  log :
-    'logs/aggregate/aggregate.log',
-  run :
-    with open( log[0], 'w' ) as LOG :
-      fastas = list( input.fastas )
-      random.Random(SEED).shuffle( fastas )
-      fasta_chunks = batched( fastas, size=len(fastas)//config['chunks'] )
-      if not os.path.exists( 'aggregated_genomes' ) : os.mkdir( 'aggregated_genomes' )
-      for n,chunk in enumerate( fasta_chunks ) :
-        chunkpath = os.path.join( 'aggregated_genomes',
-                                  'chunk_{n}.fna'.format(n=str(n) ) ) 
-        LOG.write( 'writing {chunk}...\n'.format( chunk=chunkpath ) )
-        with open( chunkpath, 'w' ) as f :
-          contigs = 0
-          for i,genome in enumerate( chunk ) :
-            for j,seq in enumerate( parse( open( genome ), 'fasta' ) ) :
-              seq.id = Path(genome).stem + '_contig_' + str(j)
-              seq.description = ''
-              f.write( seq.format('fasta') )
-            contigs = contigs + j
-          LOG.write( '   wrote {i} genomes with {j} contigs\n'.format( i=str(i+1),
-                                                                       j=str(contigs+1) ) )
-
 rule prodigal :
   group : 'gene_prediction'
   input :
-    fna='aggregated_genomes/{chunk}.fna', 
+    fna='data/genomes_enabled/{chunk}.fna', 
   output :
     faa='proteins/{chunk}.faa',
     fna='genes/{chunk}.fna',
@@ -160,14 +126,14 @@ rule hmmdb :
 rule hmmer :
   group : 'gene_prediction'
   input :
-    fasta   = 'proteins/{chunk}.faa',
+    fasta   = 'proteins/{batch}.faa',
     profile = 'hmmdb/models.hmm'
   log :
     'logs/hmmer/{chunk}.log',
   benchmark :
-    'benchmarks/hmmer/{chunk}.tsv'
+    'benchmarks/hmmer/{batch}.tsv'
   output :
-    tblout         = 'hmm_hits/{chunk}_prot_tbl.txt',
+    tblout         = 'hmm_hits/{batch}_prot_tbl.txt',
     #domtblout      = 'hmm_hits/{fasta}_{hmm}_prot_dom_tbl.txt',
     #alignment_hits = 'hmm_hits/{fasta}_{hmm}_alg_hits.txt',
     #outfile        = 'hmm_hits/{fasta}_{hmm}_prot.txt'
@@ -177,9 +143,9 @@ rule hmmer :
 rule scoring :
   input :
     # for each HMM...
-    hits    = expand( 'hmm_hits/{chunk}_prot_tbl.txt', chunk=CHUNKS ),
+    hits    = expand( 'hmm_hits/{batch}_prot_tbl.txt', batch=GENOMES ),
     # ... score orthologs for each genome...
-    faa     = expand( 'proteins/{chunk}.faa', chunk=CHUNKS ),
+    faa     = expand( 'proteins/{batch}.faa', batch=GENOMES ),
     profile = 'hmmdb/models.hmm'
   output :
     prealign = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS )
@@ -358,7 +324,7 @@ rule ani_clusters :
 rule build_clusters :
   input :
     prealignments = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS ),
-    genes         = expand( 'genes/{chunk}.fna', chunk=CHUNKS ),
+    genes         = expand( 'genes/{batch}.fna', batch=GENOMES ),
     ani_clusters  = expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS )
   output :
     cluster_table = 'cluster_data/clusters.tsv',

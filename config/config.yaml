@@ -1,6 +1,6 @@
 # input data
-hmm_dir:     'data/hmms-enabled'
-genome_dir:  'data/genomes-enabled'
+hmm_dir:          'data/hmms-enabled'
+genome_batch_dir: 'data/genomes-enabled'
 
 # e-value threshold for HMM search
 evalue: 1.0e-2
@@ -11,9 +11,6 @@ aligned_fraction_threshold: 0.75
 # threads to use when invoking multithreaded applications
 threads: 1
 ani_threads: 8
-
-# chunks to split the genome data into
-chunks: 256
 
 # cutoff thresholds for genome ANI clustering
 ani_thresholds_min: 77   # minimum ANI cutoff
