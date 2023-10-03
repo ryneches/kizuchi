@@ -90,14 +90,14 @@ rule clean :
 rule prodigal :
   group : 'gene_prediction'
   input :
-    fna='data/genomes_enabled/{chunk}.fna', 
+    fna='data/genomes_enabled/{batch}.fna', 
   output :
-    faa='proteins/{chunk}.faa',
-    fna='genes/{chunk}.fna',
+    faa='proteins/{batch}.faa',
+    fna='genes/{batch}.fna',
   log :
-    'logs/prodigal/{chunk}.log',
+    'logs/prodigal/{batch}.log',
   benchmark :
-    'benchmarks/prodigal/{chunk}.tsv'
+    'benchmarks/prodigal/{batch}.tsv'
   params :
     extra='',
   wrapper :
