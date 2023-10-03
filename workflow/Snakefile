@@ -129,7 +129,7 @@ rule hmmer :
     fasta   = 'proteins/{batch}.faa',
     profile = 'hmmdb/models.hmm'
   log :
-    'logs/hmmer/{chunk}.log',
+    'logs/hmmer/{batch}.log',
   benchmark :
     'benchmarks/hmmer/{batch}.tsv'
   output :
