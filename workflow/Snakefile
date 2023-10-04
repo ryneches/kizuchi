@@ -42,10 +42,6 @@ HMMS    = HMM_FILES.hmm
 # extract the {fasta} values into a list
 GENOMES = GENOME_BATCHES.fasta
 
-# reference and query set for fastANI
-R = GENOMES[:len(GENOMES)//2]
-Q = GENOMES[len(GENOMES)//2:]
-
 # gene pair lists
 HMMS1,HMMS2 = list( zip( *combinations( HMMS, 2 ) ) )
 
@@ -90,23 +86,23 @@ rule clean :
 rule prodigal :
   group : 'gene_prediction'
   input :
-    fna='data/genomes_enabled/{batch}.fna', 
+    fna = os.path.join( config['genome_batch_dir'], '{batch}.fna' )
   output :
-    faa='proteins/{batch}.faa',
-    fna='genes/{batch}.fna',
+    faa = 'proteins/{batch}.faa',
+    fna = 'genes/{batch}.fna',
   log :
     'logs/prodigal/{batch}.log',
   benchmark :
     'benchmarks/prodigal/{batch}.tsv'
   params :
-    extra='',
+    extra = '',
   wrapper :
     'file://wrappers/prodigal-gv'
 
 rule hmmdb :
   group : 'gene_prediction'
   input :
-    hmms = expand( 'data/hmms-enabled/{hmm}.hmm', hmm=HMMS )
+    hmms = expand( os.path.join( config['hmm_dir'], '{hmm}.hmm' ), hmm=HMMS )
   output :
     db   = 'hmmdb/models.hmm'
   log :
@@ -204,33 +200,14 @@ rule scoring :
         if len( p['hits'] ) == 0 :
           LOG.write( '    NONE\n' )
 
-rule preani :
-  group : 'ani'
-  input :
-    references = expand( 'data/genomes-enabled/{reference}.fna', reference=R ),
-    queries    = expand( 'data/genomes-enabled/{query}.fna', query=Q )
-  output :
-    references = 'preani/references.txt',
-    queries    = 'preani/queries.txt',
-  log :
-    'logs/preani/preani.log'
-  benchmark :
-    'benchmarks/preani/preani.tsv'
-  run :
-    with open( output.references, 'w' ) as rf :
-      for fasta in input.references :
-        rf.write( fasta + '\n' )
-    with open( output.queries, 'w' ) as qf :
-      for fasta in input.queries :
-        qf.write( fasta + '\n' )
-
 rule fastani :
   group : 'ani'
   input :
-    reference = 'preani/references.txt',
-    query     = 'preani/queries.txt'
+    fastas = expand( os.path.join( config['genome_batch_dir'], '{batch}.fna' ), batch=GENOMES )
   output :
     'ani/ani.tsv'
+  params :
+    prelog = 'logs/fastani/preani.log',
   log :
     'logs/fastani/fastani.log'
   benchmark :
