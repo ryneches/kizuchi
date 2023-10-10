@@ -54,8 +54,6 @@ AFT = config['aligned_fraction_threshold']
 # threads to use when invoking multithreaded applications
 THREADS = config['threads']
 
-ANI_THREADS = config['ani_threads']
-
 # cutoff thresholds for genome ANI clustering
 ANI_THRESHOLDS = linspace( config['ani_thresholds_min'],
                            config['ani_thresholds_max'],
@@ -147,13 +145,16 @@ rule scoring :
     prealign = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS )
   log :
     'logs/scoring/scoring.log'
+  threads : config['threads']
   benchmark :
     'benchmarks/scoring/scoring.tsv'
   run :
     with open( log[0], 'w' ) as LOG :
+      LOG.write( 'creating hit table...\n' )
       prealignments = { Path(p).stem : { 'prealign' : p,
                                          'hits'     : [] } for p in output.prealign }
       # use trusted cutoffs if provided
+      LOG.write( 'indexing trusted cutoffs...\n' )
       trusted_cutoffs = { m.metadata.model_name : m.metadata.trusted_cutoff
                           for m in hmmreader.read_all( open( input.profile ) ) }
       LOG.write( 'parsed {n} hmms, found {m} trusted cutoffs\n'.format( 
@@ -161,6 +162,7 @@ rule scoring :
                     m=str(sum( [ bool(v) for v in trusted_cutoffs.values() ] ) ) ) )
       # load hmmer hits and protein sequences for each chunk
       for tblout,faa in zip( input.hits, input.faa ) :
+        LOG.write( 'loading {hits} and {faa}...\n'.format( hits=tblout, faa=faa ) )
         hits = polars.DataFrame( [ h for h in parse_hmmsearch( tblout ) ] )
         seqs = { seq.id : seq for seq in parse( open( faa ), 'fasta' ) }
         chunk_genomes = { name.rsplit('_',1)[0] for name in seqs.keys() }
@@ -212,7 +214,7 @@ rule fastani :
     'logs/fastani/fastani.log'
   benchmark :
     'benchmarks/fastani/fastani.tsv'
-  threads : ANI_THREADS
+  threads : config['ani_threads']
   wrapper :
     'file://wrappers/fastani'
 

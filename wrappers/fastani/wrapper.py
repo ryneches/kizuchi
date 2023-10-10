@@ -62,5 +62,4 @@ with tempfile.TemporaryDirectory() as tmpdir :
         '{LOG} '
     )
     
-    tmpdir.clean()
     open( log, 'a' ).write( '\n\nfastANI run complete, cleaned up temp directory.\n' )

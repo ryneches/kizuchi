@@ -10,7 +10,7 @@ aligned_fraction_threshold: 0.75
 
 # threads to use when invoking multithreaded applications
 threads: 1
-ani_threads: 32
+ani_threads: 24
 
 # cutoff thresholds for genome ANI clustering
 ani_thresholds_min: 77   # minimum ANI cutoff

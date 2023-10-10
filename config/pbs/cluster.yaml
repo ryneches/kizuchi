@@ -2,7 +2,7 @@ __default__:
   jobname: "{rule}_{wildcards}"
   nodes: 24
   ppn: 1
-  pmem: "128000mb"
+  pmem: "6400mb"
   walltime: "6:00:00"
   account: "ACCOUNT"
   queue: "cdb"
