@@ -45,9 +45,6 @@ GENOMES = GENOME_BATCHES.fasta
 # gene pair lists
 HMMS1,HMMS2 = list( zip( *combinations( HMMS, 2 ) ) )
 
-# e-value threshold for HMM search
-EVALUE = config['evalue']
-
 # post-trimming aligned fraction threshold
 AFT = config['aligned_fraction_threshold']
 
@@ -146,61 +143,36 @@ rule scoring :
   log :
     'logs/scoring/scoring.log'
   threads : config['threads']
+  params :
+    evalue = config['evalue'] 
   benchmark :
     'benchmarks/scoring/scoring.tsv'
   run :
     with open( log[0], 'w' ) as LOG :
-      LOG.write( 'creating hit table...\n' )
-      prealignments = { Path(p).stem : { 'prealign' : p,
-                                         'hits'     : [] } for p in output.prealign }
-      # use trusted cutoffs if provided
-      LOG.write( 'indexing trusted cutoffs...\n' )
-      trusted_cutoffs = { m.metadata.model_name : m.metadata.trusted_cutoff
-                          for m in hmmreader.read_all( open( input.profile ) ) }
-      LOG.write( 'parsed {n} hmms, found {m} trusted cutoffs\n'.format( 
-                    n=str(len(trusted_cutoffs)),
-                    m=str(sum( [ bool(v) for v in trusted_cutoffs.values() ] ) ) ) )
-      # load hmmer hits and protein sequences for each chunk
-      for tblout,faa in zip( input.hits, input.faa ) :
-        LOG.write( 'loading {hits} and {faa}...\n'.format( hits=tblout, faa=faa ) )
-        hits = polars.DataFrame( [ h for h in parse_hmmsearch( tblout ) ] )
-        seqs = { seq.id : seq for seq in parse( open( faa ), 'fasta' ) }
-        chunk_genomes = { name.rsplit('_',1)[0] for name in seqs.keys() }
-        LOG.write( '{chunk} : found {h} hits for {p} proteins in {g} genomes\n'.format(
-                      chunk=Path(faa).stem,
-                      h=str(len(hits)),
-                      p=str(len(seqs)),
-                      g=str(len(chunk_genomes)) ) )
-        if len( hits ) == 0 : continue
-        # for each hmm, for each genome, write the proteins 
-        # with the top hits in order of their score value
-        for genome,hmm in product( hits['tname'].unique(),
-                                   hits['qname'].unique() ) :
-          if trusted_cutoffs[ hmm ] :
-            top_hits = hits.filter( ( polars.col('tname') == genome ) &
-                                    ( polars.col('qname') == hmm ) &
-                                    ( polars.col('score') >= trusted_cutoff[hmm] ) )\
-                           .sort( 'score', descending=True )
-          else :
-            top_hits = hits.filter( ( polars.col('tname') == genome ) &
-                                    ( polars.col('qname') == hmm ) &
-                                    ( polars.col('eval') <= EVALUE ) )\
-                           .sort( 'score', descending=True )
-          if len( top_hits ) == 0 : continue
-          with open( prealignments[ hmm ]['prealign'], 'a' ) as f :
-            for n,protein in enumerate( top_hits['tname'] ) :
-              seq = deepcopy( seqs[ protein ] )
-              if seq.seq[-1] == '*' : seq = seq[:-1]
-              seq.id = seq.id + '_p' + str(n)
-              prealignments[hmm]['hits'].append( seq.id )
-              f.write( seq.format( 'fasta' ) )
-      for k,p in prealignments.items() :
-        genomes = { h.rsplit('_',4)[0] for h in p['hits'] }
-        LOG.write( '{hmm} : \n'.format( hmm=k ) )
-        LOG.write( '   genomes : {n}\n'.format( n=str(len(genomes)) ) )
-        LOG.write( '   hits    : {n}\n'.format( n=str(len(p['hits'])) ) )
-        if len( p['hits'] ) == 0 :
-          LOG.write( '    NONE\n' )
+
+      LOG.write( 'opening {n} output files...\n'.format( n=str(len(output.prealign)) ) )
+      outfiles = { Path(fname).stem : open( fname, 'w' ) for fname in output.prealign }
+      
+      for hit_table,faa in zip( input.hits, input.faa ) :
+        LOG.write( 'processing {ht}...\n'.format( ht=hit_table ) )
+        hits = polars.DataFrame( [ hit for hit in parse_hmmsearch( hit_table ) ] )
+        hits = hits.filter( polars.col('eval') < float( params.evalue ) )
+        hits = hits.with_columns( hits.map_rows( lambda t : t[0].rsplit('_',3)[0] )['map'].alias( 'genome' ) )
+        hits = hits.with_columns( polars.col( 'eval' ).sort().rank('ordinal').over( [ 'genome', 'qname' ] ).alias('p') - 1 )
+        hits = hits.with_columns( polars.concat_str( [ 'tname', 'p' ], separator='_p' ).alias( 'paralog' ) )
+        
+        with pysam.FastaFile( faa ) as fasta_in :
+          for n,(hmm,protein,paralog) in enumerate( hits[ [ 'qname',
+                                                            'tname',
+                                                            'paralog'] ].rows() ) :
+            seq = fasta_in.fetch( protein )
+            if seq[-1] == '*' : seq = seq[:-1]
+            outfiles[hmm].write( '>{name}\n{seq}\n'.format( name=paralog, seq=seq ) )
+        LOG.write( '   wrote {n} records\n'.format( n=str(n) ) )
+      
+      LOG.write( 'closing output files...\n' )
+      for f in outfiles.values() :
+        f.close()
 
 rule fastani :
   group : 'ani'
