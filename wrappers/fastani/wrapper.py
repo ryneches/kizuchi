@@ -31,10 +31,14 @@ with tempfile.TemporaryDirectory() as tmpdir :
                                             [ R, Q ],
                                             [ reflist, qrylist ],
                                             [ 'reference', 'query' ] ) :
+        
+        open( log, 'a' ).write( 'writing group {g}...\n'.format( g=group ) )
+                               
         for batch in batches :
             with pysam.FastaFile( batch ) as fasta :
+                open( log, 'a' ).write( '   batch : {b}\n'.format( b=batch ) )
                 for ref in fasta.references :
-                    genome = ref.split('|')[0]
+                    genome = ref.rsplit('_',2)[0]
                     with open( os.path.join( tmpdir, genome + '.fna' ), 'a' ) as f :
                         n = len( contigs[ genome ] )
                         contigs[ genome ].append( ref )

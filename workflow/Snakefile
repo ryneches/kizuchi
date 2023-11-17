@@ -9,6 +9,7 @@ from utils import find_links
 from utils import batched
 
 import os, pandas, polars, dendropy
+import pysam
 import random
 from pathlib import Path
 from copy import deepcopy
