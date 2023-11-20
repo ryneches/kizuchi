@@ -130,3 +130,6 @@ dmypy.json
 
 # Snakemake stuff
 .snakemake/
+
+# Input data is too big for git
+data/

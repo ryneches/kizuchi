@@ -156,10 +156,24 @@ rule scoring :
       
       for hit_table,faa in zip( input.hits, input.faa ) :
         LOG.write( 'processing {ht}...\n'.format( ht=hit_table ) )
+        
+        # read hmmsearch hits
         hits = polars.DataFrame( [ hit for hit in parse_hmmsearch( hit_table ) ] )
+        
+        # apply evalue cutoff
         hits = hits.filter( polars.col('eval') < float( params.evalue ) )
+        
+        # reject lower scoring hits to the same protein, because sometimes
+        # ortholog groups are less orthologous than one might hope for
+        hits = hits.group_by( [ 'tname' ] ).agg( polars.col( [ 'qname', 'eval' ] ).take( polars.col('eval').min() ) )
+        
+        # build the genome name
         hits = hits.with_columns( hits.map_rows( lambda t : t[0].rsplit('_',3)[0] )['map'].alias( 'genome' ) )
+        
+        # when the same ortholog group hits the same genome, rank the paralogs by e-value
         hits = hits.with_columns( polars.col( 'eval' ).sort().rank('ordinal').over( [ 'genome', 'qname' ] ).alias('p') - 1 )
+
+        # build paralog name
         hits = hits.with_columns( polars.concat_str( [ 'tname', 'p' ], separator='_p' ).alias( 'paralog' ) )
         
         with pysam.FastaFile( faa ) as fasta_in :
