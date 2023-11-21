@@ -150,10 +150,16 @@ rule scoring :
     'benchmarks/scoring/scoring.tsv'
   run :
     with open( log[0], 'w' ) as LOG :
-
-      LOG.write( 'opening {n} output files...\n'.format( n=str(len(output.prealign)) ) )
-      outfiles = { Path(fname).stem : open( fname, 'w' ) for fname in output.prealign }
       
+      LOG.write( 'opening {n} output files...\n'.format( n=str(len(output.prealign)) ) )
+      outfiles = { Path(fname).stem : fname for fname in output.prealign }
+      
+      # not all hmms will have proteins that survive the scoring process, but
+      # they all need to have output files.
+
+      for fname in output.prealign :
+        Path( fname ).touch()
+
       for hit_table,faa in zip( input.hits, input.faa ) :
         LOG.write( 'processing {ht}...\n'.format( ht=hit_table ) )
         
@@ -172,22 +178,23 @@ rule scoring :
         
         # when the same ortholog group hits the same genome, rank the paralogs by e-value
         hits = hits.with_columns( polars.col( 'eval' ).sort().rank('ordinal').over( [ 'genome', 'qname' ] ).alias('p') - 1 )
-
+        
         # build paralog name
         hits = hits.with_columns( polars.concat_str( [ 'tname', 'p' ], separator='_p' ).alias( 'paralog' ) )
         
         with pysam.FastaFile( faa ) as fasta_in :
-          for n,(hmm,protein,paralog) in enumerate( hits[ [ 'qname',
-                                                            'tname',
-                                                            'paralog'] ].rows() ) :
-            seq = fasta_in.fetch( protein )
-            if seq[-1] == '*' : seq = seq[:-1]
-            outfiles[hmm].write( '>{name}\n{seq}\n'.format( name=paralog, seq=seq ) )
-        LOG.write( '   wrote {n} records\n'.format( n=str(n) ) )
+          for row in hits.select( 'qname' ).unique().rows( named=True ) :
+            hmm = row['qname']
+            with open( outfiles[hmm], 'a' ) as outfile :
+              for n,(hmm,protein,paralog) in enumerate( hits[ [ 'qname',
+                                                                'tname',
+                                                                'paralog'] ].filter( polars.col('qname') == hmm ).rows() ) :
+                seq = fasta_in.fetch( protein )
+                if seq[-1] == '*' : seq = seq[:-1]
+                outfile.write( '>{name}\n{seq}\n'.format( name=paralog, seq=seq ) )
+            LOG.write( '   {hmm} : wrote {n} records\n'.format( n=str(n), hmm=hmm ) )
       
-      LOG.write( 'closing output files...\n' )
-      for f in outfiles.values() :
-        f.close()
+      LOG.write( 'scoring complete.\n' )
 
 rule fastani :
   group : 'ani'
