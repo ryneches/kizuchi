@@ -2,8 +2,8 @@ __default__:
   jobname: "{rule}_{wildcards}"
   nodes: 24
   ppn: 1
-  pmem: "6400mb"
-  walltime: "6:00:00"
+  pmem: "128000mb"
+  walltime: "24:00:00"
   account: "ACCOUNT"
   queue: "cdb"
   email: "hpc@vort.org"
