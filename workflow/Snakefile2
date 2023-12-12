@@ -51,6 +51,9 @@ ANI_THRESHOLDS = linspace( config['ani_thresholds_min'],
                            config['ani_thresholds_max'],
                            config['ani_thresholds_n'] )
 
+NON_REDUNDANT_TREES = [ os.path.join( 'clusters',
+                                      line.split()[0].replace( 'genes', 'trees/by_gene' ).replace('.fna','.nwk') ) 
+                        for line in open( 'cluster_data/redundancy.tsv' ) ]
 
 def cluster_trees( wildcards ) :
   
@@ -73,7 +76,7 @@ def cluster_trees( wildcards ) :
 
 rule all :
   input :
-    cluster_trees
+    NON_REDUNDANT_TREES
 
 rule mafft :
   group : 'phylogenetics'

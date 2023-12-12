@@ -26,5 +26,8 @@ else :
     
     # Executed shell command
     shell(
-        'mafft {extra} {snakemake.input[0]} > {snakemake.output[0]}'
+        'mafft {extra} '
+        '{snakemake.input[0]} '
+        '> {snakemake.output[0]} '
+        '{log}'
     )
