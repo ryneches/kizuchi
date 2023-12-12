@@ -1,5 +1,8 @@
 include : 'Importer'
 
+# load configuration
+configfile : 'config/config.yaml'
+
 from utils import parse_hmmsearch
 from utils import bipartition_compatibility, bipartition_compatibility_ratio
 from utils import find_links
@@ -21,13 +24,10 @@ from scipy.stats import kendalltau, pearsonr, skew, kurtosis
 from statistics import stdev
 from SuchTree import SuchTree, SuchLinkedTrees
 
-# load configuration
-configfile : 'config/config.yaml'
-
 from utils import clustalo_memory, trimal_memory, fasttree_memory
 
 HMMS_DIR    = config['hmm_dir']
-GENOMES_DIR = config['genome_dir']
+GENOMES_DIR = config['genome_batch_dir']
 
 # minimum number of links per cluster for tree correlation
 MIN_CLUSTER_LINKS = config['min_cluster_links']
@@ -75,7 +75,7 @@ rule all :
   input :
     cluster_trees
 
-rule clustalo :
+rule mafft :
   group : 'phylogenetics'
   input :
     'clusters/{ani}/{cid}/genes/{hmm}.fna'
@@ -84,14 +84,14 @@ rule clustalo :
   params :
     extra=''
   log :
-    'logs/clustalo/{ani}_{cid}_{hmm}.log'
+    'logs/mafft/{ani}_{cid}_{hmm}.log'
   benchmark :
-    'benchmarks/clustalo/{ani}_{cid}_{hmm}.tsv'
+    'benchmarks/mafft/{ani}_{cid}_{hmm}.tsv'
   threads : THREADS
   resources :
     mem_mb = clustalo_memory
   wrapper :
-    'file://wrappers/clustalo'
+    'file://wrappers/mafft'
 
 rule trimal :
   group : 'phylogenetics'

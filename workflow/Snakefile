@@ -9,6 +9,7 @@ from utils import find_links
 from utils import batched
 
 import os, pandas, polars, dendropy
+import pysam
 import random
 from pathlib import Path
 from copy import deepcopy
@@ -19,7 +20,7 @@ from Bio.SeqIO import parse
 from Bio import AlignIO, SearchIO
 from Bio.Align import MultipleSeqAlignment
 from numpy import linspace, zeros, unique
-from collections import defaultdict
+from collections import defaultdict, ChainMap
 from itertools import combinations, product
 from scipy.cluster.hierarchy import single, fcluster
 from scipy.spatial.distance import squareform
@@ -27,43 +28,29 @@ from scipy.stats import kendalltau, pearsonr, skew, kurtosis
 from statistics import stdev
 from SuchTree import SuchTree, SuchLinkedTrees
 
-HMMS_DIR    = config['hmm_dir']
-GENOMES_DIR = config['genome_dir']
+HMMS_DIR         = config['hmm_dir']
+GENOME_BATCH_DIR = config['genome_batch_dir']
+#GENOMES_DIR      = config['genome_dir']
 
 # index data inputs
-HMM_FILES    = glob_wildcards( os.path.join( HMMS_DIR, '{hmm}.hmm' ) )
-GENOME_FILES = glob_wildcards( os.path.join( GENOMES_DIR, '{fasta}.fna' ) )
-
-# aggregate genomes into chunks
-CHUNKS = [ 'chunk_{i}'.format(i=str(i)) for i in range( config['chunks'] ) ]
+HMM_FILES      = glob_wildcards( os.path.join( HMMS_DIR, '{hmm}.hmm' ) )
+GENOME_BATCHES = glob_wildcards( os.path.join( GENOME_BATCH_DIR, '{fasta}.fna' ) )
+#GENOME_FILES   = glob_wildcards( os.path.join( GENOMES_DIR, '{fasta}.fna' ) )
 
 # extract the {hmm} values into a list
 HMMS    = HMM_FILES.hmm
 
 # extract the {fasta} values into a list
-GENOMES = GENOME_FILES.fasta
-
-# genome fasta paths
-GENOME_PATHS = { genome : os.path.join( GENOMES_DIR, genome + '.fna' ) 
-                 for genome in GENOMES }
-
-# reference and query set for fastANI
-R = GENOMES[:len(GENOMES)//2]
-Q = GENOMES[len(GENOMES)//2:]
+GENOMES = GENOME_BATCHES.fasta
 
 # gene pair lists
 HMMS1,HMMS2 = list( zip( *combinations( HMMS, 2 ) ) )
-
-# e-value threshold for HMM search
-EVALUE = config['evalue']
 
 # post-trimming aligned fraction threshold
 AFT = config['aligned_fraction_threshold']
 
 # threads to use when invoking multithreaded applications
 THREADS = config['threads']
-
-ANI_THREADS = config['ani_threads']
 
 # cutoff thresholds for genome ANI clustering
 ANI_THRESHOLDS = linspace( config['ani_thresholds_min'],
@@ -92,55 +79,26 @@ rule clean :
         scored_proteins cluster_data clusters \
         statistics benchmarks logs'
 
-rule aggregate :
-  group : 'gene_prediction'
-  input :
-    fastas=expand( 'data/genomes-enabled/{fasta}.fna', fasta=GENOMES ),
-  output :
-    chunks=expand( 'aggregated_genomes/{chunk}.fna', chunk=CHUNKS ),
-  log :
-    'logs/aggregate/aggregate.log',
-  run :
-    with open( log[0], 'w' ) as LOG :
-      fastas = list( input.fastas )
-      random.Random(SEED).shuffle( fastas )
-      fasta_chunks = batched( fastas, size=len(fastas)//config['chunks'] )
-      if not os.path.exists( 'aggregated_genomes' ) : os.mkdir( 'aggregated_genomes' )
-      for n,chunk in enumerate( fasta_chunks ) :
-        chunkpath = os.path.join( 'aggregated_genomes',
-                                  'chunk_{n}.fna'.format(n=str(n) ) ) 
-        LOG.write( 'writing {chunk}...\n'.format( chunk=chunkpath ) )
-        with open( chunkpath, 'w' ) as f :
-          contigs = 0
-          for i,genome in enumerate( chunk ) :
-            for j,seq in enumerate( parse( open( genome ), 'fasta' ) ) :
-              seq.id = Path(genome).stem + '_contig_' + str(j)
-              seq.description = ''
-              f.write( seq.format('fasta') )
-            contigs = contigs + j
-          LOG.write( '   wrote {i} genomes with {j} contigs\n'.format( i=str(i+1),
-                                                                       j=str(contigs+1) ) )
-
 rule prodigal :
   group : 'gene_prediction'
   input :
-    fna='aggregated_genomes/{chunk}.fna', 
+    fna = os.path.join( config['genome_batch_dir'], '{batch}.fna' )
   output :
-    faa='proteins/{chunk}.faa',
-    fna='genes/{chunk}.fna',
+    faa = 'proteins/{batch}.faa',
+    fna = 'genes/{batch}.fna',
   log :
-    'logs/prodigal/{chunk}.log',
+    'logs/prodigal/{batch}.log',
   benchmark :
-    'benchmarks/prodigal/{chunk}.tsv'
+    'benchmarks/prodigal/{batch}.tsv'
   params :
-    extra='',
+    extra = '',
   wrapper :
     'file://wrappers/prodigal-gv'
 
 rule hmmdb :
   group : 'gene_prediction'
   input :
-    hmms = expand( 'data/hmms-enabled/{hmm}.hmm', hmm=HMMS )
+    hmms = expand( os.path.join( config['hmm_dir'], '{hmm}.hmm' ), hmm=HMMS )
   output :
     db   = 'hmmdb/models.hmm'
   log :
@@ -160,14 +118,14 @@ rule hmmdb :
 rule hmmer :
   group : 'gene_prediction'
   input :
-    fasta   = 'proteins/{chunk}.faa',
+    fasta   = 'proteins/{batch}.faa',
     profile = 'hmmdb/models.hmm'
   log :
-    'logs/hmmer/{chunk}.log',
+    'logs/hmmer/{batch}.log',
   benchmark :
-    'benchmarks/hmmer/{chunk}.tsv'
+    'benchmarks/hmmer/{batch}.tsv'
   output :
-    tblout         = 'hmm_hits/{chunk}_prot_tbl.txt',
+    tblout         = 'hmm_hits/{batch}_prot_tbl.txt',
     #domtblout      = 'hmm_hits/{fasta}_{hmm}_prot_dom_tbl.txt',
     #alignment_hits = 'hmm_hits/{fasta}_{hmm}_alg_hits.txt',
     #outfile        = 'hmm_hits/{fasta}_{hmm}_prot.txt'
@@ -177,99 +135,80 @@ rule hmmer :
 rule scoring :
   input :
     # for each HMM...
-    hits    = expand( 'hmm_hits/{chunk}_prot_tbl.txt', chunk=CHUNKS ),
+    hits    = expand( 'hmm_hits/{batch}_prot_tbl.txt', batch=GENOMES ),
     # ... score orthologs for each genome...
-    faa     = expand( 'proteins/{chunk}.faa', chunk=CHUNKS ),
+    faa     = expand( 'proteins/{batch}.faa', batch=GENOMES ),
     profile = 'hmmdb/models.hmm'
   output :
     prealign = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS )
   log :
     'logs/scoring/scoring.log'
+  threads : config['threads']
+  params :
+    evalue = config['evalue'] 
   benchmark :
     'benchmarks/scoring/scoring.tsv'
   run :
     with open( log[0], 'w' ) as LOG :
-      prealignments = { Path(p).stem : { 'prealign' : p,
-                                         'hits'     : [] } for p in output.prealign }
-      # use trusted cutoffs if provided
-      trusted_cutoffs = { m.metadata.model_name : m.metadata.trusted_cutoff
-                          for m in hmmreader.read_all( open( input.profile ) ) }
-      LOG.write( 'parsed {n} hmms, found {m} trusted cutoffs\n'.format( 
-                    n=str(len(trusted_cutoffs)),
-                    m=str(sum( [ bool(v) for v in trusted_cutoffs.values() ] ) ) ) )
-      # load hmmer hits and protein sequences for each chunk
-      for tblout,faa in zip( input.hits, input.faa ) :
-        hits = polars.DataFrame( [ h for h in parse_hmmsearch( tblout ) ] )
-        seqs = { seq.id : seq for seq in parse( open( faa ), 'fasta' ) }
-        chunk_genomes = { name.rsplit('_',1)[0] for name in seqs.keys() }
-        LOG.write( '{chunk} : found {h} hits for {p} proteins in {g} genomes\n'.format(
-                      chunk=Path(faa).stem,
-                      h=str(len(hits)),
-                      p=str(len(seqs)),
-                      g=str(len(chunk_genomes)) ) )
-        if len( hits ) == 0 : continue
-        # for each hmm, for each genome, write the proteins 
-        # with the top hits in order of their score value
-        for genome,hmm in product( hits['tname'].unique(),
-                                   hits['qname'].unique() ) :
-          if trusted_cutoffs[ hmm ] :
-            top_hits = hits.filter( ( polars.col('tname') == genome ) &
-                                    ( polars.col('qname') == hmm ) &
-                                    ( polars.col('score') >= trusted_cutoff[hmm] ) )\
-                           .sort( 'score', descending=True )
-          else :
-            top_hits = hits.filter( ( polars.col('tname') == genome ) &
-                                    ( polars.col('qname') == hmm ) &
-                                    ( polars.col('eval') <= EVALUE ) )\
-                           .sort( 'score', descending=True )
-          if len( top_hits ) == 0 : continue
-          with open( prealignments[ hmm ]['prealign'], 'a' ) as f :
-            for n,protein in enumerate( top_hits['tname'] ) :
-              seq = deepcopy( seqs[ protein ] )
-              if seq.seq[-1] == '*' : seq = seq[:-1]
-              seq.id = seq.id + '_p' + str(n)
-              prealignments[hmm]['hits'].append( seq.id )
-              f.write( seq.format( 'fasta' ) )
-      for k,p in prealignments.items() :
-        genomes = { h.rsplit('_',4)[0] for h in p['hits'] }
-        LOG.write( '{hmm} : \n'.format( hmm=k ) )
-        LOG.write( '   genomes : {n}\n'.format( n=str(len(genomes)) ) )
-        LOG.write( '   hits    : {n}\n'.format( n=str(len(p['hits'])) ) )
-        if len( p['hits'] ) == 0 :
-          LOG.write( '    NONE\n' )
+      
+      LOG.write( 'opening {n} output files...\n'.format( n=str(len(output.prealign)) ) )
+      outfiles = { Path(fname).stem : fname for fname in output.prealign }
+      
+      # not all hmms will have proteins that survive the scoring process, but
+      # they all need to have output files.
 
-rule preani :
-  group : 'ani'
-  input :
-    references = expand( 'data/genomes-enabled/{reference}.fna', reference=R ),
-    queries    = expand( 'data/genomes-enabled/{query}.fna', query=Q )
-  output :
-    references = 'preani/references.txt',
-    queries    = 'preani/queries.txt',
-  log :
-    'logs/preani/preani.log'
-  benchmark :
-    'benchmarks/preani/preani.tsv'
-  run :
-    with open( output.references, 'w' ) as rf :
-      for fasta in input.references :
-        rf.write( fasta + '\n' )
-    with open( output.queries, 'w' ) as qf :
-      for fasta in input.queries :
-        qf.write( fasta + '\n' )
+      for fname in output.prealign :
+        Path( fname ).touch()
+
+      for hit_table,faa in zip( input.hits, input.faa ) :
+        LOG.write( 'processing {ht}...\n'.format( ht=hit_table ) )
+        
+        # read hmmsearch hits
+        hits = polars.DataFrame( [ hit for hit in parse_hmmsearch( hit_table ) ] )
+        
+        # apply evalue cutoff
+        hits = hits.filter( polars.col('eval') < float( params.evalue ) )
+        
+        # reject lower scoring hits to the same protein, because sometimes
+        # ortholog groups are less orthologous than one might hope for
+        hits = hits.group_by( [ 'tname' ] ).agg( polars.col( [ 'qname', 'eval' ] ).take( polars.col('eval').min() ) )
+        
+        # build the genome name
+        hits = hits.with_columns( hits.map_rows( lambda t : t[0].rsplit('_',3)[0] )['map'].alias( 'genome' ) )
+        
+        # when the same ortholog group hits the same genome, rank the paralogs by e-value
+        hits = hits.with_columns( polars.col( 'eval' ).sort().rank('ordinal').over( [ 'genome', 'qname' ] ).alias('p') - 1 )
+        
+        # build paralog name
+        hits = hits.with_columns( polars.concat_str( [ 'tname', 'p' ], separator='_p' ).alias( 'paralog' ) )
+        
+        with pysam.FastaFile( faa ) as fasta_in :
+          for row in hits.select( 'qname' ).unique().rows( named=True ) :
+            hmm = row['qname']
+            with open( outfiles[hmm], 'a' ) as outfile :
+              for n,(hmm,protein,paralog) in enumerate( hits[ [ 'qname',
+                                                                'tname',
+                                                                'paralog'] ].filter( polars.col('qname') == hmm ).rows() ) :
+                seq = fasta_in.fetch( protein )
+                if seq[-1] == '*' : seq = seq[:-1]
+                outfile.write( '>{name}\n{seq}\n'.format( name=paralog, seq=seq ) )
+            LOG.write( '   {hmm} : wrote {n} records\n'.format( n=str(n), hmm=hmm ) )
+      
+      LOG.write( 'scoring complete.\n' )
 
 rule fastani :
   group : 'ani'
   input :
-    reference = 'preani/references.txt',
-    query     = 'preani/queries.txt'
+    fastas = expand( os.path.join( config['genome_batch_dir'], '{batch}.fna' ), batch=GENOMES )
   output :
     'ani/ani.tsv'
+  params :
+    prelog = 'logs/fastani/preani.log',
   log :
     'logs/fastani/fastani.log'
   benchmark :
     'benchmarks/fastani/fastani.tsv'
-  threads : ANI_THREADS
+  threads : config['ani_threads']
   wrapper :
     'file://wrappers/fastani'
 
@@ -358,13 +297,14 @@ rule ani_clusters :
 rule build_clusters :
   input :
     prealignments = expand( 'scored_proteins/{hmm}.faa', hmm=HMMS ),
-    genes         = expand( 'genes/{chunk}.fna', chunk=CHUNKS ),
+    genes         = expand( 'genes/{batch}.fna', batch=GENOMES ),
     ani_clusters  = expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS )
   output :
     cluster_table = 'cluster_data/clusters.tsv',
     clusters      = directory( 'clusters' ),
   params :
-    ANIs = ANI_THRESHOLDS
+    ANIs = ANI_THRESHOLDS,
+    MCL  = MIN_CLUSTER_LINKS
   log :
     'logs/build_clusters/build_clusters.log'
   benchmark :
@@ -378,87 +318,84 @@ rule build_clusters :
                     for a,b in combinations( C.keys(), 2 ) ] )
     
     with open( log[0], 'w' ) as LOG :
+      LOG.write( 'indexing sequences...\n' )
+
+      sequences = { Path(faa).stem : pysam.FastaFile( faa ) 
+                    for faa in input.prealignments
+                    if os.path.getsize( faa ) > 0 } 
+      
       LOG.write( 'loading sequences...\n' )
       
-      sequences = { Path(fasta).stem : { rec.id : rec.seq
-                                         for rec
-                                         in parse( open( fasta ), 'fasta' ) } 
-                    for fasta
-                    in input.prealignments }
+      hmm2gene = polars.DataFrame( [ { 'hmm'     : hmm,
+                                       'gene'    : seq_id.rsplit('_',1)[0],
+                                       'genome'  : seq_id.rsplit('_',4)[0],
+                                       'prank'   : int(seq_id.rsplit('_p',1)[1]),
+                                       'paralog' : seq_id }
+                                     for hmm    in sequences.keys() 
+                                     for seq_id in sequences[hmm].references ] )
       
-      LOG.write( 'Genes loaded   : {n}\n'.format( n=str(len(sequences)) ) )
+      LOG.write( 'proteins loaded   : {n}\n'.format( n=str( len(hmm2gene) ) ) )
       
-      geneseqs = defaultdict(dict)
-      for chunk in input.genes :
-        for seq in parse( open( chunk ), 'fasta' ) :
-          genome = seq.id.rsplit('_',3)[0] 
-          geneseqs[ genome ][ seq.id ] = seq
+      genes = dict( ChainMap( *[ { name : fasta[name] for name in fasta.references }
+                                 for fasta in [ pysam.FastaFile( fna )
+                                                for fna in input.genes
+                                                if os.path.getsize( fna ) > 0 ] ] ) )
+
+      LOG.write( 'genes loaded : {n}\n'.format( n=str( len(genes) ) ) )
       
-      LOG.write( 'Genomes loaded : {n}\n'.format( n=str(len(geneseqs)) ) )
+      LOG.write( 'loading genome ANI cluster tables...\n' )
       
-      LOG.write( 'creating gene table for genome clusters...\n' )
-      
-      records = []
+      data = []
       for ani,clusterfile in zip( params.ANIs, input.ani_clusters ) :
         for cid,names in [ line.split() for line in open( clusterfile ) ] :
-          names = names.split(',')
-          #if not len( names ) > 5 : continue
-          for hmm in sequences.keys() :
-            seq_ids = [ seq_id for seq_id in sequences[hmm].keys() if seq_id.rsplit('_',4)[0] in names ]
-            for seq_id in seq_ids :
-              records.append( { 'seq_id' : seq_id,
-                                'genome' : seq_id.rsplit('_',4)[0],
-                                'cid'    : int( cid ),
-                                'hmm'    : hmm,
-                                'ANI'    : float( ani ),
-                                'id'     : cid + '_' + Path( clusterfile ).stem.split('_')[-1] } )
+          for genome in names.split(',') :
+            data.append( { 'ani'    : ani,
+                           'cid'    : int(cid),
+                           'genome' : genome } )
       
-      df = polars.DataFrame( records )
+      genome_ani = polars.DataFrame( data )
       
-      LOG.write( 'number of clusters by ANI...\n' )
-      for ani,n in df.groupby('ANI').agg( polars.col('cid').unique().count() ).sort('ANI').iter_rows() :
-        LOG.write( '    ANI={ani} : {n} clusters\n'.format( ani=ani, n=n ) )
-      
-      LOG.write( 'gene table description :\n\n' + str( df.describe() ) + '\n' )
-      
-      clusters = df.groupby('id').agg( ['hmm','genome'] ).apply(
-                         lambda x : ( x[0],
-                           intersect( x[1],
-                                      x[2],
-                                      MIN_CLUSTER_LINKS ) ) ).filter( polars.col('column_1') > 0 )['column_0']
-      
-      LOG.write( 'found {n} genome clusters with at least {T} genomes sharing at least two genes.\n'.format(
-                 n=len(clusters), T=MIN_CLUSTER_LINKS ) )
-      
-      cluster_table = df.filter( polars.col('id').is_in( clusters ) )
-      
-      LOG.write( 'filtered gene table description :\n\n' + str( cluster_table.describe() ) )
+      LOG.write( 'creating directory for gene data for ANI clusters....\n' )
 
-      cluster_table.write_csv( file=output.cluster_table, separator='\t' )
-
-      # create cluster directory structure and write gene nucleotide
-      # sequences as individual fastas per cluster
-      
-      LOG.write( 'found {n} clusters.\n'.format( n=len( cluster_table.groupby('id').agg('seq_id') ) ) )
-      
       if not os.path.exists( 'clusters' ) : os.mkdir( 'clusters' )
+      
+      for ANI in params.ANIs :
+        LOG.write( 'finding gene families at ANI={ani}...\n'.format( ani=str(ANI) ) )
 
-      for ANI,cids in cluster_table.groupby('ANI').agg( polars.col('cid').unique() ).sort('ANI').iter_rows() :
+        df = hmm2gene.join( genome_ani.filter( polars.col('ani') == ANI ), on='genome' )
+
+        clusters = df.group_by('cid').agg( ['hmm','genome'] ).map_rows(
+                         lambda x : ( x[0],
+                                      intersect( x[1], 
+                                                 x[2],
+                                                 params.MCL ) ) ).filter( polars.col('column_1') > 0 )['column_0'].to_list()
+
+        LOG.write( '   found {n} potentially informative clusters...\n'.format( n=str( len(clusters) ) ) )
+
+        cluster_table = df.filter( polars.col('cid').is_in( clusters ) )
+        
+        LOG.write( '   creating directory for gene data for ANI={n}...\n'.format( n=str(ANI) ) )
         
         anipath = os.path.join( 'clusters', str(ANI) )
         if not os.path.exists( anipath ) : os.mkdir( anipath )
-        
-        for cluster_id in cids :
+
+        HMMS,GENES = 0,0
+        for cid in cluster_table['cid'].unique().to_list() :
           
-          clusterpath = os.path.join( anipath, str( cluster_id ) )
+          clusterpath = os.path.join( anipath, str( cid ) )
           if not os.path.exists( clusterpath ) : os.mkdir( clusterpath )
           genepath = os.path.join( clusterpath, 'genes' )
           if not os.path.exists( genepath ) : os.mkdir( genepath )
           
-          for hmm,seq_ids,genomes in cluster_table.filter( ( polars.col('ANI') == ANI ) & ( polars.col('cid') == cluster_id ) ).groupby('hmm').agg( ['seq_id', 'genome'] ).iter_rows() :
-            with open( os.path.join( genepath, hmm + '.fna' ), 'w' ) as f :
-              for seq_id,genome in zip( seq_ids, genomes ) :
-                orig_seq_id = seq_id.rsplit('_',1)[0] # remove hmmer evalue rank
-                seq = geneseqs[genome][orig_seq_id] 
-                seq.id = seq_id
-                f.write( seq.format( 'fasta' ) )
+          for hmm in cluster_table.filter( polars.col('cid') == cid )['hmm'].unique().to_list() :
+            HMMS = HMMS + 1
+            records = cluster_table.filter( ( polars.col('cid') == cid ) 
+                                          & ( polars.col('hmm') == hmm ) )['gene'].to_list()
+            if not records : continue
+            with open( os.path.join( genepath, hmm + '.fna'), 'w' ) as f :
+              for gene in records :
+                GENES = GENES + 1
+                f.write( '>{seq_id}\n{seq}\n'.format( seq_id = gene,
+                                                      seq    = genes[gene] ) )
+          
+        LOG.write( '    wrote {G} sequences for {H} genes.\n'.format( G=str(GENES), H=str(HMMS) ) )
