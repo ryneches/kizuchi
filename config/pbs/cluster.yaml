@@ -1,11 +1,11 @@
 __default__:
   jobname: "{rule}_{wildcards}"
-  nodes: 24
-  ppn: 1
-  pmem: "128000mb"
+  nodes: 1
+  ncpus: 1
+  mem: "16gb"
   walltime: "24:00:00"
   account: "ACCOUNT"
-  queue: "cdb"
+  queue: "APC"
   email: "hpc@vort.org"
   mailon: "bea"
   jobout: "oe"
