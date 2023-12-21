@@ -1,7 +1,7 @@
-__author__ = "Nikos Tsardakas Renhuldt"
+__author__    = "Nikos Tsardakas Renhuldt"
 __copyright__ = "Copyright 2021, Nikos Tsardakas Renhuldt"
-__email__ = "nikos.tsardakas_renhuldt@tbiokem.lth.se"
-__license__ = "MIT"
+__email__     = "nikos.tsardakas_renhuldt@tbiokem.lth.se"
+__license__   = "MIT"
 
 
 from snakemake.shell import shell
@@ -27,5 +27,5 @@ else :
         ' -out {snakemake.output.tree}'
         ' -log {snakemake.log[0]}'
         ' {snakemake.input.alignment}'
-        ' LOG'
+        ' {LOG}'
     )
