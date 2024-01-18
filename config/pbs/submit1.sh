@@ -13,7 +13,7 @@
 ####    an the amount of time a job requires.  May include processor
 ####    type, too.
 
-#PBS -l nodes=1:ppn=1,pmem=10000mb
+#PBS -l nodes=1:ncpus=1,pmem=18gb
 #PBS -l walltime=24:00:00
 
 ####  Flux account and queue specification here
@@ -21,8 +21,8 @@
 ####    special hardware, like large memory nodes or GPUs or,
 ####    or if you use software that is restricted to campus use.
 
-#PBS -A ACCOUNT
-#PBS -q cdb
+####PBS -A ACCOUNT
+#PBS -q APC
 
 #### #### ####  These are the least frequently changing options
 
@@ -33,8 +33,8 @@
 
 ####  Join output and error; pass environment to job
 
-#PBS -j oe
-#PBS -o logs/pds/
+#PBS -e logs/pbs/
+#PBS -o logs/pbs/
 #PBS -V
 
 # Add a note here to say what software modules should be loaded.
