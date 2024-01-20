@@ -53,7 +53,7 @@ ANI_THRESHOLDS = linspace( config['ani_thresholds_min'],
 
 def fastapath_to_treepath( p ) :
   ani, cid, folder, fasta = Path(p).parts
-  return( os.path.join( ani, cid, 'trees', 'by_gene', Path(p).stem + '.nwk' ) )
+  return( os.path.join( 'clusters', ani, cid, 'trees', 'by_gene', Path(p).stem + '.nwk' ) )
 
 REDUNDANT_TREE_MAP = {}
 
