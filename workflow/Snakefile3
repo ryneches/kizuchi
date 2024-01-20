@@ -57,7 +57,7 @@ def fastapath_to_treepath( p ) :
 
 REDUNDANT_TREE_MAP = {}
 
-for line in open( '/tmp/redundancy.tsv' ) :
+for line in open( 'cluster_data/redundancy.tsv' ) :
   fastas = line.split()
   for fasta in fastas :
     REDUNDANT_TREE_MAP[ fastapath_to_treepath( fasta ) ] = fastapath_to_treepath( fastas[0] )
