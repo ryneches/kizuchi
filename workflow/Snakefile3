@@ -51,17 +51,6 @@ ANI_THRESHOLDS = linspace( config['ani_thresholds_min'],
                            config['ani_thresholds_max'],
                            config['ani_thresholds_n'] )
 
-def fastapath_to_treepath( p ) :
-  ani, cid, folder, fasta = Path(p).parts
-  return( os.path.join( 'clusters', ani, cid, 'trees', 'by_gene', Path(p).stem + '.nwk' ) )
-
-REDUNDANT_TREE_MAP = {}
-
-for line in open( 'cluster_data/redundancy.tsv' ) :
-  fastas = line.split()
-  for fasta in fastas :
-    REDUNDANT_TREE_MAP[ fastapath_to_treepath( fasta ) ] = fastapath_to_treepath( fastas[0] )
-
 def cluster_trees( wildcards ) :
   
   WC = glob_wildcards( os.path.join( 'clusters',
@@ -82,8 +71,35 @@ def cluster_trees( wildcards ) :
                  hmm=WC.hmm )
 
 rule all :
+  output :
+    'clusters/{ani}/{cid}/data.tsv'
+
+rule symlinks :
+  group : 'phylogenomics'
   input :
-    REDUNDANT_TREE_MAP.keys()
+    rtm = 'cluster_data/redundancy.tsv' 
+  output :
+    'clusters/{ani}/{cid}/trees/by_gene/{hmm}.nwk'
+  run :
+    def fastapath_to_treepath( p ) :
+      ani, cid, folder, fasta = Path(p).parts
+      return( os.path.join( 'clusters',
+                            ani,
+                            cid,
+                            'trees',
+                            'by_gene',
+                            Path(p).stem + '.nwk' ) )
+    
+    rtm = {}
+    
+    for line in open() :
+      fastas = line.split()
+      for fasta in fastas :
+        candidate = fastapath_to_treepath( fastas[0] )
+        base      = fastapath_to_treepath( fasta )
+        if candidate == base : continue
+        if not os.path.exists( candidate ) :
+          os.path.symlink( base, candidate )
 
 rule clusterdata :
   group : 'phylogenomics'
