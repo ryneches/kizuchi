@@ -56,8 +56,9 @@ def cluster_trees( wildcards ) :
   WC = glob_wildcards( os.path.join( 'clusters',
                                      '{ani}',
                                      '{cid}',
-                                     'genes',
-                                     '{hmm}.fna' ) )
+                                     'trees',
+                                     'by_gene',
+                                     '{hmm}.nwk' ) )
   
   return expand( os.path.join( 'clusters',
                                '{ani}',
@@ -71,8 +72,8 @@ def cluster_trees( wildcards ) :
                  hmm=WC.hmm )
 
 rule all :
-  output :
-    'clusters/{ani}/{cid}/data.tsv'
+  input :
+    cluster_trees
 
 rule symlinks :
   group : 'phylogenomics'
