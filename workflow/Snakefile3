@@ -116,7 +116,7 @@ rule clusterdata :
       for hmm1, hmm2 in combinations( treepaths.keys(), 2 ) :
         
         treefile1 = treepaths[hmm1]
-        treefile2 = treepaths[hmm2
+        treefile2 = treepaths[hmm2]
         
         # if either treefile is an empty sentilel file, skip the calculations
         if os.stat( treefile1 ).st_size == 0 : continue
