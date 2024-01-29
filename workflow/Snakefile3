@@ -77,8 +77,6 @@ rule all :
 
 rule clusterdata :
   group : 'phylogenomics'
-  input :
-    cluster = 'clusters/{ani}/{cid}'
   output :
     table = 'clusters/{ani}/{cid}/data.tsv'
   params :
