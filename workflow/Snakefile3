@@ -108,7 +108,7 @@ rule clusterdata :
       treepaths = {}
       for ani,cid,hmm,tree for RTM.filter( ani=params.ani,
                                            cid=params.cid ).iter_rows() :
-        LOG.write( '  {hmm} -> {tree}\n'.format( hmm=hmm, tree=tree ) )
+        LOG.write( '    {hmm} -> {tree}\n'.format( hmm=hmm, tree=tree ) )
         treepaths[hmm] = tree
 
       data = []
@@ -170,8 +170,8 @@ rule clusterdata :
         r,pr = pearsonr(   hmm1_distances, hmm2_distances )
         t,pt = kendalltau( hmm1_distances, hmm2_distances )
         
-        jaccard = len( set( T1.leafs.keys() ) & set( T2.leafs.keys() ) ) /
-                  len( set( T1.leafs.keys() ) | set( T2.leafs.keys() ) )
+        jaccard = len( set( T1.leafs.keys() ) & set( T2.leafs.keys() ) ) \
+                / len( set( T1.leafs.keys() ) | set( T2.leafs.keys() ) )
         
         bp_compat = bipartition_compatibility_ratio( T1, T2, links )
         
