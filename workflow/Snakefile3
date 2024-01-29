@@ -69,23 +69,19 @@ for line in open( 'cluster_data/redundancy.tsv' ) :
 
 RTM = polars.DataFrame( RTM )
 
-def cluster_data( wildcards ) :
-  
-  WC = glob_wildcards( os.path.join( 'clusters',
-                                     '{ani}',
-                                     '{cid}' ) )
-  
-  return expand( os.path.join( 'clusters',
-                               '{ani}',
-                               '{cid}',
-                                'data.tsv' ),
-                 zip,
-                 ani=WC.ani,
-                 cid=WC.cid )
+WC = glob_wildcards( os.path.join( 'clusters',
+                                   '{ani}',
+                                   '{cid}' ) )
 
 rule all :
   output :
-    cluster_data
+    expand( os.path.join( 'clusters',
+                          '{ani}',
+                          '{cid}',
+                          'data.tsv' ),
+                 zip,
+                 ani=WC.ani,
+                 cid=WC.cid )
 
 rule clusterdata :
   group : 'phylogenomics'
