@@ -115,8 +115,8 @@ rule clusterdata :
         T2 = SuchTree( treefile2 )
         links = find_links( list( T1.leafs.keys() ), list( T2.leafs.keys() ) )
         
-        LOG.write( '    {g1} : {n} leafs\n'.format( g1=hmm1_name, n=T1.n_leafs ) )
-        LOG.write( '    {g2} : {n} leafs\n'.format( g2=hmm2_name, n=T2.n_leafs ) )
+        LOG.write( '    {g1} : {n} leafs\n'.format( g1=hmm1, n=T1.n_leafs ) )
+        LOG.write( '    {g2} : {n} leafs\n'.format( g2=hmm2, n=T2.n_leafs ) )
         LOG.write( '    links : {n}\n'.format( n=len(links) ) )
         
         # some clusters may have lost enough members during trimming and filtering
