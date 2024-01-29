@@ -106,8 +106,8 @@ rule clusterdata :
       LOG.write( 'cluster ID : {cid}\n'.format( cid=params.cid ) )
       
       treepaths = {}
-      for ani,cid,hmm,tree for RTM.filter( ani=params.ani,
-                                           cid=params.cid ).iter_rows() :
+      for ani,cid,hmm,tree in RTM.filter( ani=params.ani,
+                                          cid=params.cid ).iter_rows() :
         LOG.write( '    {hmm} -> {tree}\n'.format( hmm=hmm, tree=tree ) )
         treepaths[hmm] = tree
 
