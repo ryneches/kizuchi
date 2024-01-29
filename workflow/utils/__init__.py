@@ -1,6 +1,7 @@
 import os
 from Bio.SeqIO import parse
 from itertools import chain, islice
+from collections import defaultdict
 
 # itertools.batched won't be available until 3.12.
 def batched( iterable, size=10 ) :
