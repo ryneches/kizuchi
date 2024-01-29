@@ -187,4 +187,6 @@ rule clusterdata :
         LOG.write( 'writing records for {n} correlations...\n'.format( n=len( data ) ) )
         polars.DataFrame( data ).write_csv( file=output[0], separator='\t' )
       else :
+        with open( output[0], 'w' ) as f :
+          pass
         LOG.write( 'no gene pairs exceed minimum link threshold, aborting.\n' )
