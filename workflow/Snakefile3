@@ -70,7 +70,7 @@ for line in open( 'cluster_data/redundancy.tsv' ) :
 RTM = polars.DataFrame( RTM )
 
 rule all :
-  output :
+  input :
     [ os.path.join( 'clusters', ani, cid, 'data.tsv' )
       for ani in os.listdir( 'clusters' )
       for cid in os.listdir( os.path.join( 'clusters', ani ) ) ]
