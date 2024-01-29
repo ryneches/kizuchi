@@ -1,6 +1,6 @@
 import os
 from Bio.SeqIO import parse
-from itertools import chain, islice
+from itertools import chain, islice, product
 from collections import defaultdict
 
 # itertools.batched won't be available until 3.12.
