@@ -1,6 +1,6 @@
 cluster-config: "config/pbs/cluster.yaml"
 cluster: "JOBNAME=`echo {cluster.jobname} | tr '=,:' '---'`; echo job name is $JOBNAME; qsub -N $JOBNAME -l select={cluster.nodes}:ncpus={cluster.ncpus}:mem={cluster.mem} -l walltime={cluster.walltime} -A {cluster.account} -q {cluster.queue} -M {cluster.email} -m {cluster.mailon} -j {cluster.jobout} -o {cluster.outdir} -V "
-jobs: 24 
+jobs: 1000 
 resources: [cpus=1, cores=1, mem_mb=6400]
 verbose: true
 notemp: true
