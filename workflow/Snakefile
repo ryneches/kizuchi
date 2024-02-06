@@ -70,7 +70,7 @@ SEED = 31173
 
 rule all :
   input :
-    'cluster_data/clusters.tsv'
+    'cluster_data/redundancy.tsv'
 
 rule clean :
   shell :
@@ -300,7 +300,7 @@ rule build_clusters :
     genes         = expand( 'genes/{batch}.fna', batch=GENOMES ),
     ani_clusters  = expand( 'ani_clusters/ani_clusters_{ani_cutoff}.txt', ani_cutoff=ANI_THRESHOLDS )
   output :
-    cluster_table = 'cluster_data/clusters.tsv',
+    redundancy    = 'cluster_data/redundancy.tsv',
     clusters      = directory( 'clusters' ),
   params :
     ANIs = ANI_THRESHOLDS,
@@ -310,92 +310,87 @@ rule build_clusters :
   benchmark :
     'benchmarks/cluster_filtering/cluster_filtering.tsv'
   run :
+
     def intersect( hmms, genomes, threshold ) :
-      C = defaultdict( set )
-      for hmm,genome in zip( hmms, genomes ) :
-        C[hmm].add(genome)
-      return sum( [ len( C[a] & C[b] ) > threshold
-                    for a,b in combinations( C.keys(), 2 ) ] )
-    
+        C = defaultdict( set )
+        for hmm,genome in zip( hmms, genomes ) :
+            C[hmm].add(genome)
+        return sum( [ len( C[a] & C[b] ) > threshold
+                      for a,b in combinations( C.keys(), 2 ) ] )
+
     with open( log[0], 'w' ) as LOG :
-      LOG.write( 'indexing sequences...\n' )
+      
+      clusterpath = 'clusters'
 
-      sequences = { Path(faa).stem : pysam.FastaFile( faa ) 
-                    for faa in input.prealignments
-                    if os.path.getsize( faa ) > 0 } 
-      
-      LOG.write( 'loading sequences...\n' )
-      
-      hmm2gene = polars.DataFrame( [ { 'hmm'     : hmm,
-                                       'gene'    : seq_id.rsplit('_',1)[0],
-                                       'genome'  : seq_id.rsplit('_',4)[0],
-                                       'prank'   : int(seq_id.rsplit('_p',1)[1]),
-                                       'paralog' : seq_id }
-                                     for hmm    in sequences.keys() 
-                                     for seq_id in sequences[hmm].references ] )
-      
-      LOG.write( 'proteins loaded   : {n}\n'.format( n=str( len(hmm2gene) ) ) )
-      
-      genes = dict( ChainMap( *[ { name : fasta[name] for name in fasta.references }
-                                 for fasta in [ pysam.FastaFile( fna )
-                                                for fna in input.genes
-                                                if os.path.getsize( fna ) > 0 ] ] ) )
-
-      LOG.write( 'genes loaded : {n}\n'.format( n=str( len(genes) ) ) )
-      
-      LOG.write( 'loading genome ANI cluster tables...\n' )
-      
-      data = []
-      for ani,clusterfile in zip( params.ANIs, input.ani_clusters ) :
-        for cid,names in [ line.split() for line in open( clusterfile ) ] :
-          for genome in names.split(',') :
-            data.append( { 'ani'    : ani,
-                           'cid'    : int(cid),
-                           'genome' : genome } )
-      
-      genome_ani = polars.DataFrame( data )
-      
       LOG.write( 'creating directory for gene data for ANI clusters....\n' )
 
-      if not os.path.exists( 'clusters' ) : os.mkdir( 'clusters' )
-      
+      if not os.path.exists( clusterpath ) : os.mkdir( clusterpath )
+
+      genesets = {}
+
       for ANI in params.ANIs :
-        LOG.write( 'finding gene families at ANI={ani}...\n'.format( ani=str(ANI) ) )
-
-        df = hmm2gene.join( genome_ani.filter( polars.col('ani') == ANI ), on='genome' )
-
-        clusters = df.group_by('cid').agg( ['hmm','genome'] ).map_rows(
-                         lambda x : ( x[0],
-                                      intersect( x[1], 
-                                                 x[2],
-                                                 params.MCL ) ) ).filter( polars.col('column_1') > 0 )['column_0'].to_list()
-
-        LOG.write( '   found {n} potentially informative clusters...\n'.format( n=str( len(clusters) ) ) )
-
-        cluster_table = df.filter( polars.col('cid').is_in( clusters ) )
-        
-        LOG.write( '   creating directory for gene data for ANI={n}...\n'.format( n=str(ANI) ) )
-        
-        anipath = os.path.join( 'clusters', str(ANI) )
-        if not os.path.exists( anipath ) : os.mkdir( anipath )
-
-        HMMS,GENES = 0,0
-        for cid in cluster_table['cid'].unique().to_list() :
           
-          clusterpath = os.path.join( anipath, str( cid ) )
-          if not os.path.exists( clusterpath ) : os.mkdir( clusterpath )
-          genepath = os.path.join( clusterpath, 'genes' )
-          if not os.path.exists( genepath ) : os.mkdir( genepath )
+          genesets[ANI] = {}
           
-          for hmm in cluster_table.filter( polars.col('cid') == cid )['hmm'].unique().to_list() :
-            HMMS = HMMS + 1
-            records = cluster_table.filter( ( polars.col('cid') == cid ) 
-                                          & ( polars.col('hmm') == hmm ) )['gene'].to_list()
-            if not records : continue
-            with open( os.path.join( genepath, hmm + '.fna'), 'w' ) as f :
-              for gene in records :
-                GENES = GENES + 1
-                f.write( '>{seq_id}\n{seq}\n'.format( seq_id = gene,
-                                                      seq    = genes[gene] ) )
+          LOG.write( 'finding gene families at ANI={ani}...\n'.format( ani=str(ANI) ) )
           
-        LOG.write( '    wrote {G} sequences for {H} genes.\n'.format( G=str(GENES), H=str(HMMS) ) )
+          df = hmm2gene.join( genome_ani.filter( polars.col('ani') == ANI ), on='genome' )
+          
+          clusters = df.group_by('cid').agg( ['hmm','genome'] ).map_rows(
+                          lambda x : ( x[0],
+                                        intersect( x[1], 
+                                                  x[2],
+                                                  params.MCL ) ) ).filter( polars.col('column_1') > 0 )['column_0'].to_list()
+          
+          LOG.write( '   found {n} potentially informative clusters...\n'.format( n=str( len(clusters) ) ) )
+          
+          cluster_table = df.filter( polars.col('cid').is_in( clusters ) )
+          
+          LOG.write( '   creating directory for gene data for ANI={n}...\n'.format( n=str(ANI) ) )
+          
+          anipath = os.path.join( clusterpath, str(ANI) )
+          if not os.path.exists( anipath ) : os.mkdir( anipath )
+          
+          HMMS,GENES = 0,0
+          for cid in cluster_table['cid'].unique().to_list() :
+
+              genesets[ANI][cid] = {}
+              
+              cidpath = os.path.join( anipath, str( cid ) )
+              if not os.path.exists( cidpath ) : os.mkdir( cidpath )
+              genepath = os.path.join( cidpath, 'genes' )
+              if not os.path.exists( genepath ) : os.mkdir( genepath )
+            
+              for hmm in cluster_table.filter( polars.col('cid') == cid )['hmm'].unique().to_list() :
+                  HMMS = HMMS + 1
+                  records = cluster_table.filter( ( polars.col('cid') == cid ) 
+                                            & ( polars.col('hmm') == hmm ) )['gene'].to_list()
+                  if len(records) < MCL : continue
+                  genesets[ANI][cid][hmm] = frozenset( records )
+                  with open( os.path.join( genepath, hmm + '.fna'), 'w' ) as f :
+                      for gene in records :
+                          GENES = GENES + 1
+                          f.write( '>{seq_id}\n{seq}\n'.format( seq_id = gene,
+                                                                seq    = genes[gene] ) )
+            
+          LOG.write( '   wrote {G} sequences for {H} genes.\n'.format( G=str(GENES), H=str(HMMS) ) )
+
+      hmmtable = polars.DataFrame( 
+          [ { 'fna' : '{ani}/{cid}/genes/{hmm}.fna'.format( ani=ani,
+                                                            cid=cid,
+                                                            hmm=hmm ),
+              'id'  : ':'.join( sorted( genesets[ani][cid][hmm] ) ) }
+            for ani in genesets
+            for cid in genesets[ani]
+            for hmm in genesets[ani][cid] ] )
+
+      LOG.write( 'total alignments  : {n}\n'.format( n=len(alltable) ) )
+      LOG.write( 'unique alignments : {n}\n'.format( n=len( hmmtable['id'].unique() ) ) )
+      LOG.write( 'percent unique    : {n:.1f}%\n'.format( n=(len(allhmms)/len( hmmtable['id'].unique() )*100 ) ) )
+
+      with open( output.redunancy, 'w' ) as f :
+          f.write( '\n'.join( [ '\t'.join( row[1] )
+                                for row
+                                in hmmtable.group_by( 'id' ).agg( 'fna' ).rows() ] ) )
+      
+      LOG.write( 'redundancy table written.')

@@ -1,3 +1,7 @@
+# Snakemake parameters
+latency-wait: 20
+keep-going: True
+
 # input data
 hmm_dir:          'data/hmms-enabled'
 genome_batch_dir: 'data/genomes-enabled'

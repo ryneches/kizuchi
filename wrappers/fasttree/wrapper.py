@@ -1,13 +1,13 @@
-__author__ = "Nikos Tsardakas Renhuldt"
+__author__    = "Nikos Tsardakas Renhuldt"
 __copyright__ = "Copyright 2021, Nikos Tsardakas Renhuldt"
-__email__ = "nikos.tsardakas_renhuldt@tbiokem.lth.se"
-__license__ = "MIT"
+__email__     = "nikos.tsardakas_renhuldt@tbiokem.lth.se"
+__license__   = "MIT"
 
 
 from snakemake.shell import shell
 import os
 
-log = snakemake.log_fmt_shell( stdout=True, stderr=True )
+LOG = snakemake.log_fmt_shell( stdout=True, stderr=True )
 extra = snakemake.params.get( 'extra', '' )
 
 # if there are fewer than two records in the input file, write an
@@ -27,5 +27,5 @@ else :
         ' -out {snakemake.output.tree}'
         ' -log {snakemake.log[0]}'
         ' {snakemake.input.alignment}'
-        ' {log}'
+        ' {LOG}'
     )

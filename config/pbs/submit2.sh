@@ -13,16 +13,16 @@
 ####    an the amount of time a job requires.  May include processor
 ####    type, too.
 
-#PBS -l nodes=1:ppn=1,pmem=10000mb
-#PBS -l walltime=8:00:00
+#PBS -l select=1:ncpus=1:mem=18gb
+#PBS -l walltime=96:00:00
 
 ####  Flux account and queue specification here
 ####    These will change if you work on multiple projects, or need
 ####    special hardware, like large memory nodes or GPUs or,
 ####    or if you use software that is restricted to campus use.
 
-#PBS -A ACCOUNT
-#PBS -q cdb
+#### PBS -A ACCOUNT
+#PBS -q APC
 
 #### #### ####  These are the least frequently changing options
 
@@ -33,8 +33,8 @@
 
 ####  Join output and error; pass environment to job
 
-#PBS -j oe
-#PBS -o logs/pds/
+#PBS -e logs/pbs/
+#PBS -o logs/pbs/
 #PBS -V
 
 # Add a note here to say what software modules should be loaded.
@@ -75,20 +75,11 @@ mkdir -p logs
 mkdir -p logs/pbs
 
 # Initiating snakemake and running workflow in cluster mode
-snakemake                           \
-    --snakefile workflow/Snakefile2 \
-#   --jobs 8                        \
-    --profile config/pbs            \
-    --latency-wait 5                \
-    --group-components              \
-        phylogenetics=16            \
-        phylogenomics=1             \
-
-snakemake                           \
-    --snakefile workflow/Snakefile2 \
-    --latency-wait 5                \
-    --profile config/pbs            \
-    --jobs 16
+snakemake                                \
+    --snakefile workflow/Snakefile2      \
+    --profile config/pbs                 \
+    --group-components phylogenetics=512 \
+    --rerun-incomplete                   \
 
 # Printing out job summary
 qstat -f $PBS_JOBID

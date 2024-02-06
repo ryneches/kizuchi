@@ -10,6 +10,8 @@ import os
 log = snakemake.log_fmt_shell( stdout=True, stderr=True )
 extra = snakemake.params.get( 'extra', '' )
 
+empty_output_warning = 'WARNING: Output alignment has not been generated. It is empty.'
+
 # if there are fewer than two records in the input file, write an
 # empty output file and exit.
 if open( snakemake.input[0] ).read().count( '>' ) < 3 :
@@ -28,3 +30,9 @@ else :
         ' {extra}'
         ' {log}'
     )
+
+    if empty_output_warning in open( snakemake.log[0] ).read() :
+       with open( snakemake.log[0], 'w' ) as f :
+          f.write( '\n Snakemake wrapper : writing empty file anyway.' )
+       with open( snakemake.output[0], 'w' ) as f :
+          f.write( '' )

@@ -1,0 +1,191 @@
+include : 'Importer'
+
+# load configuration
+configfile : 'config/config.yaml'
+
+from utils import parse_hmmsearch
+from utils import bipartition_compatibility, bipartition_compatibility_ratio
+from utils import find_links
+
+import os, pandas, polars, dendropy
+from pathlib import Path
+from copy import deepcopy
+from hmm_profile import reader, writer
+from cdhit_reader import read_cdhit
+from Bio.SeqIO import parse
+from Bio import AlignIO, SearchIO
+from Bio.Align import MultipleSeqAlignment
+from numpy import linspace, zeros, unique
+from collections import defaultdict
+from itertools import combinations, product
+from scipy.cluster.hierarchy import single, fcluster
+from scipy.spatial.distance import squareform
+from scipy.stats import kendalltau, pearsonr, skew, kurtosis
+from statistics import stdev
+from SuchTree import SuchTree, SuchLinkedTrees
+
+from utils import clustalo_memory, trimal_memory, fasttree_memory
+
+HMMS_DIR    = config['hmm_dir']
+GENOMES_DIR = config['genome_batch_dir']
+
+# minimum number of links per cluster for tree correlation
+MIN_CLUSTER_LINKS = config['min_cluster_links']
+
+# degenerate tree threshold : exclude pairwise tree-to-tree
+# comparisons where the ratio of non-unique leaf-to-leaf
+# distances exceeds this threshold
+DEGEN_THRESHOLD = config['degeneracy_threshold']
+
+# e-value threshold for HMM search
+EVALUE = config['evalue']
+
+# post-trimming aligned fraction threshold
+AFT = config['aligned_fraction_threshold']
+
+# threads to use when invoking multithreaded applications
+THREADS = config['threads']
+
+# cutoff thresholds for genome ANI clustering
+ANI_THRESHOLDS = linspace( config['ani_thresholds_min'],
+                           config['ani_thresholds_max'],
+                           config['ani_thresholds_n'] )
+
+RTM = []
+
+for line in open( 'cluster_data/redundancy.tsv' ) :
+  fastas = line.split()
+  ani, cid, folder, basefasta = Path( fastas[0] ).parts
+  basetree = os.path.join( 'clusters',
+                           ani,
+                           cid,
+                           'trees',
+                           'by_gene',
+                           Path(basefasta).stem + '.nwk' )
+  for fasta in fastas :
+    ani, cid, folder, candidatefasta = Path( fasta ).parts
+    hmm = Path(fasta).stem
+    RTM.append( { 'ani' : ani, 'cid' : cid, 'hmm' : hmm, 'tree' : basetree } )
+
+RTM = polars.DataFrame( RTM )
+
+rule all :
+  input :
+    [ os.path.join( 'clusters', ani, cid, 'data.tsv' )
+      for ani in os.listdir( 'clusters' )
+      for cid in os.listdir( os.path.join( 'clusters', ani ) ) ]
+
+rule clusterdata :
+  group : 'phylogenomics'
+  output :
+    table = 'clusters/{ani}/{cid}/data.tsv'
+  params :
+    ani   = '{ani}',
+    cid   = '{cid}',
+  log :
+    'logs/clusterdata/{ani}_{cid}.log'
+  benchmark :
+    'benchmarks/clusterdata/{ani}_{cid}.tsv'
+  run :
+    with open( log[0], 'w' ) as LOG :
+       
+      LOG.write( 'ANI        : {ani}\n'.format( ani=params.ani ) )
+      LOG.write( 'cluster ID : {cid}\n'.format( cid=params.cid ) )
+      
+      treepaths = {}
+      for ani,cid,hmm,tree in RTM.filter( ani=params.ani,
+                                          cid=params.cid ).iter_rows() :
+        LOG.write( '    {hmm} -> {tree}\n'.format( hmm=hmm, tree=tree ) )
+        treepaths[hmm] = tree
+
+      data = []
+      
+      for hmm1, hmm2 in combinations( treepaths.keys(), 2 ) :
+        
+        treefile1 = treepaths[hmm1]
+        treefile2 = treepaths[hmm2]
+        
+        # if either treefile is an empty sentilel file, skip the calculations
+        if os.stat( treefile1 ).st_size == 0 : continue
+        if os.stat( treefile2 ).st_size == 0 : continue
+        
+        LOG.write( 'loading {g1} and {g2}...\n'.format( g1=hmm1, g2=hmm2 ) )
+        
+        T1 = SuchTree( treefile1 )
+        T2 = SuchTree( treefile2 )
+        links = find_links( list( T1.leafs.keys() ), list( T2.leafs.keys() ) )
+        
+        LOG.write( '    {g1} : {n} leafs\n'.format( g1=hmm1, n=T1.n_leafs ) )
+        LOG.write( '    {g2} : {n} leafs\n'.format( g2=hmm2, n=T2.n_leafs ) )
+        LOG.write( '    links : {n}\n'.format( n=len(links) ) )
+        
+        # some clusters may have lost enough members during trimming and filtering
+        # that they no longer meet the link threshold
+        if len(links) < MIN_CLUSTER_LINKS :
+          LOG.write( 'gene pair is below minimum link threshold; aborting.\n' )
+          continue
+        
+        hmm1_pairs = []
+        hmm2_pairs = []
+        
+        for (t1a,t2a),(t1b,t2b) in combinations( links, 2 ) :
+          hmm1_pairs.append( ( t1a, t1b ) )
+          hmm2_pairs.append( ( t2a, t2b ) )
+        
+        hmm1_distances = T1.distances_by_name( hmm1_pairs )
+        hmm2_distances = T2.distances_by_name( hmm2_pairs )
+        
+        LOG.write( '    computed {n} distances.\n'.format( n=str( len( hmm1_distances ) ) ) )
+        
+        # skip degenerate trees
+        if len( unique( hmm1_distances ) ) / len( hmm1_distances ) < DEGEN_THRESHOLD :
+          LOG.write( '    {g1} tree is degenerate, skipping.\n'.format( g1=hmm1 ) )
+          continue
+        if len( unique( hmm2_distances ) ) / len( hmm2_distances ) < DEGEN_THRESHOLD :
+          LOG.write( '    {g2} tree is degenerate, skipping.\n'.format( g2=hmm2 ) )
+          continue
+        
+        hmm1_skew = skew( hmm1_distances )
+        hmm2_skew = skew( hmm2_distances )
+        
+        hmm1_kurtosis = kurtosis( hmm1_distances )
+        hmm2_kurtosis = kurtosis( hmm2_distances )
+         
+        hmm1_stdev = stdev( hmm1_distances )
+        hmm2_stdev = stdev( hmm2_distances )
+        
+        r,pr = pearsonr(   hmm1_distances, hmm2_distances )
+        t,pt = kendalltau( hmm1_distances, hmm2_distances )
+        
+        jaccard = len(links) / ( T1.n_leafs + T2.n_leafs )
+        
+        bp_compat = bipartition_compatibility_ratio( T1, T2, links )
+        
+        data.append(  { 'hmm1'          : hmm1,
+                        'hmm2'          : hmm2,
+                        'hmm1_leafs'    : T1.n_leafs,
+                        'hmm2_leafs'    : T2.n_leafs,
+                        'jaccard'       : jaccard,
+                        'links'         : len(links),
+                        'hmm1_skew'     : hmm1_skew,
+                        'hmm2_skew'     : hmm2_skew,
+                        'hmm1_kurtosis' : hmm1_kurtosis,
+                        'hmm2_kurtosis' : hmm2_kurtosis,
+                        'hmm1_stdev'    : hmm1_stdev,
+                        'hmm2_stdev'    : hmm2_stdev,
+                        'bp_ratio'      : bp_compat['ratio'],
+                        'bp_jaccard'    : bp_compat['jaccard'],
+                        'r'             : r,
+                        'pr'            : pr,
+                        'tau'           : t,
+                        'p_tau'         : pt,
+                        'cluster'       : int( params.cid ),
+                        'ANI'           : float( params.ani) } )
+      
+      if data :
+        LOG.write( 'writing records for {n} correlations...\n'.format( n=len( data ) ) )
+        polars.DataFrame( data ).write_csv( file=output[0], separator='\t' )
+      else :
+        with open( output[0], 'w' ) as f :
+          pass
+        LOG.write( 'no gene pairs exceed minimum link threshold, aborting.\n' )
