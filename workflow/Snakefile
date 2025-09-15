@@ -334,6 +334,23 @@ rule build_clusters :
           
           LOG.write( 'finding gene families at ANI={ani}...\n'.format( ani=str(ANI) ) )
           
+          data = []
+          for ani,clusterfile in zip( params.ANIs, input.ani_clusters ) :
+            for cid,names in [ line.split() for line in open( clusterfile ) ] :
+              for genome in names.split(',') :
+                data.append( { 'ani'    : ani,
+                               'cid'    : int(cid),
+                               'genome' : genome } )
+          genome_ani = polars.DataFrame( data )
+
+          hmm2gene = polars.DataFrame( [ { 'hmm'     : hmm,
+                                           'gene'    : seq_id.rsplit('_',1)[0],
+                                           'genome'  : seq_id.rsplit('_',4)[0],
+                                           'prank'   : int(seq_id.rsplit('_p',1)[1]),
+                                           'paralog' : seq_id }
+                                         for hmm    in sequences.keys() 
+                                         for seq_id in sequences[hmm].references ] )
+          
           df = hmm2gene.join( genome_ani.filter( polars.col('ani') == ANI ), on='genome' )
           
           clusters = df.group_by('cid').agg( ['hmm','genome'] ).map_rows(
